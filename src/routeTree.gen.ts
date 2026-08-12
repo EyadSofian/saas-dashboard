@@ -19,6 +19,7 @@ import { Route as SignUpRouteImport } from './routes/sign-up'
 import { Route as ApiHealthRouteImport } from './routes/api/health'
 import { Route as WorkspacesNewRouteImport } from './routes/workspaces.new'
 import { Route as ApiAuthSplatRouteImport } from './routes/api/auth.$'
+import { Route as ApiV1CopilotRouteImport } from './routes/api/v1/copilot'
 import { Route as ApiV1DashboardsRouteImport } from './routes/api/v1/dashboards'
 import { Route as ApiV1DataHealthRouteImport } from './routes/api/v1/data-health'
 import { Route as ApiV1DiscoveryRouteImport } from './routes/api/v1/discovery'
@@ -82,6 +83,11 @@ const WorkspacesNewRoute = WorkspacesNewRouteImport.update({
 const ApiAuthSplatRoute = ApiAuthSplatRouteImport.update({
   id: '/api/auth/$',
   path: '/api/auth/$',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiV1CopilotRoute = ApiV1CopilotRouteImport.update({
+  id: '/api/v1/copilot',
+  path: '/api/v1/copilot',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ApiV1DashboardsRoute = ApiV1DashboardsRouteImport.update({
@@ -167,6 +173,7 @@ export interface FileRoutesByFullPath {
   '/api/health': typeof ApiHealthRoute
   '/workspaces/new': typeof WorkspacesNewRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
+  '/api/v1/copilot': typeof ApiV1CopilotRoute
   '/api/v1/dashboards': typeof ApiV1DashboardsRouteWithChildren
   '/api/v1/data-health': typeof ApiV1DataHealthRoute
   '/api/v1/discovery': typeof ApiV1DiscoveryRoute
@@ -193,6 +200,7 @@ export interface FileRoutesByTo {
   '/api/health': typeof ApiHealthRoute
   '/workspaces/new': typeof WorkspacesNewRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
+  '/api/v1/copilot': typeof ApiV1CopilotRoute
   '/api/v1/dashboards': typeof ApiV1DashboardsRouteWithChildren
   '/api/v1/data-health': typeof ApiV1DataHealthRoute
   '/api/v1/discovery': typeof ApiV1DiscoveryRoute
@@ -220,6 +228,7 @@ export interface FileRoutesById {
   '/api/health': typeof ApiHealthRoute
   '/workspaces/new': typeof WorkspacesNewRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
+  '/api/v1/copilot': typeof ApiV1CopilotRoute
   '/api/v1/dashboards': typeof ApiV1DashboardsRouteWithChildren
   '/api/v1/data-health': typeof ApiV1DataHealthRoute
   '/api/v1/discovery': typeof ApiV1DiscoveryRoute
@@ -248,6 +257,7 @@ export interface FileRouteTypes {
     | '/api/health'
     | '/workspaces/new'
     | '/api/auth/$'
+    | '/api/v1/copilot'
     | '/api/v1/dashboards'
     | '/api/v1/data-health'
     | '/api/v1/discovery'
@@ -274,6 +284,7 @@ export interface FileRouteTypes {
     | '/api/health'
     | '/workspaces/new'
     | '/api/auth/$'
+    | '/api/v1/copilot'
     | '/api/v1/dashboards'
     | '/api/v1/data-health'
     | '/api/v1/discovery'
@@ -300,6 +311,7 @@ export interface FileRouteTypes {
     | '/api/health'
     | '/workspaces/new'
     | '/api/auth/$'
+    | '/api/v1/copilot'
     | '/api/v1/dashboards'
     | '/api/v1/data-health'
     | '/api/v1/discovery'
@@ -327,6 +339,7 @@ export interface RootRouteChildren {
   ApiHealthRoute: typeof ApiHealthRoute
   WorkspacesNewRoute: typeof WorkspacesNewRoute
   ApiAuthSplatRoute: typeof ApiAuthSplatRoute
+  ApiV1CopilotRoute: typeof ApiV1CopilotRoute
   ApiV1DashboardsRoute: typeof ApiV1DashboardsRouteWithChildren
   ApiV1DataHealthRoute: typeof ApiV1DataHealthRoute
   ApiV1DiscoveryRoute: typeof ApiV1DiscoveryRoute
@@ -410,6 +423,13 @@ declare module '@tanstack/react-router' {
       path: '/api/auth/$'
       fullPath: '/api/auth/$'
       preLoaderRoute: typeof ApiAuthSplatRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/v1/copilot': {
+      id: '/api/v1/copilot'
+      path: '/api/v1/copilot'
+      fullPath: '/api/v1/copilot'
+      preLoaderRoute: typeof ApiV1CopilotRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/api/v1/dashboards': {
@@ -560,6 +580,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiHealthRoute: ApiHealthRoute,
   WorkspacesNewRoute: WorkspacesNewRoute,
   ApiAuthSplatRoute: ApiAuthSplatRoute,
+  ApiV1CopilotRoute: ApiV1CopilotRoute,
   ApiV1DashboardsRoute: ApiV1DashboardsRouteWithChildren,
   ApiV1DataHealthRoute: ApiV1DataHealthRoute,
   ApiV1DiscoveryRoute: ApiV1DiscoveryRoute,

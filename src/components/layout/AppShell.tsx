@@ -22,6 +22,7 @@ import { useI18n, type DictKey } from "@/lib/i18n";
 import { useSession } from "@/lib/session";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/primitives";
+import { CopilotPanel } from "@/components/copilot/CopilotPanel";
 
 interface NavItem {
   to: string;
@@ -95,6 +96,8 @@ export function AppShell({ children }: { children: ReactNode }) {
 
         <main className="min-w-0 flex-1 p-4 pb-24 md:p-6 md:pb-6">{children}</main>
       </div>
+
+      <CopilotPanel />
 
       {/* Mobile bar: all five destinations, no hidden "More" drawer. */}
       <nav className="fixed inset-x-0 bottom-0 z-20 border-t border-border bg-surface md:hidden">

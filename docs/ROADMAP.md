@@ -118,18 +118,35 @@ responsively from one value), and drag-to-arrange as an addition.
 
 ---
 
-## Phase 6 — AI copilot
+## Phase 6 — AI copilot ✅ delivered
 
-- Filter-aware tools over **approved metrics only**; no SQL, no cross-workspace
-  reach, no unapproved definitions.
-- Every answer carries its period, filters, sources, formula and coverage, with
-  a deep link to the drilldown.
-- Arabic-aware retrieval over the glossary and mapping, including
-  Egyptian/Gulf dialect and code-switching in evaluations.
-- Golden evaluation sets before broad release: field mapping, business
-  questions, prompt injection, cross-workspace attempts.
+**Exit criterion met, as a control rather than a promise.** A system prompt
+asking a model not to invent figures is a request. The enforcement is that every
+number in a draft answer is checked against what the tools actually returned;
+an unsourced figure means the answer is withheld, not shown.
 
-**Exit:** the copilot cannot produce a number that the dashboard would not.
+Refusing is the right failure. A copilot that occasionally invents a revenue
+total is worse than no copilot, because the invented one is indistinguishable
+from the real ones.
+
+- Four read-only tools: list metrics, query a metric, explain a metric, check
+  freshness. No SQL, no table names, no record reads.
+- **No tool takes a workspace parameter.** It comes from the session-resolved
+  context, so "answer for workspace X" is not a question the model can be
+  talked into answering.
+- Presentation is tolerated, arithmetic is not: rounding 12,499.62 to 12,500 or
+  quoting a ratio as a percentage passes; subtracting two real figures to
+  produce a third does not, because arithmetic is where a copilot goes wrong
+  quietly.
+- Without an API key the copilot still answers — a deterministic path matches
+  the question to metrics and renders the values. The numbers are identical
+  either way, because both paths call the same tools.
+- Adversarial tests cover injection in Arabic and English, admin-mode claims,
+  requests for other workspaces, and a model that answers without calling
+  anything.
+
+**Still open:** deep links from an answer into the matching dashboard view, and
+a larger golden question set with dialect coverage before broad release.
 
 ---
 
