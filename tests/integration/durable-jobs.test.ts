@@ -16,6 +16,7 @@ import {
   heartbeatJob,
   jobContext,
   JobWorker,
+  reapAbandonedJobs,
   stalledJobs,
 } from "@/platform/jobs/durable";
 import { writeAudit } from "@/platform/audit/log";
@@ -170,6 +171,55 @@ describe("lease expiry — surviving a dead worker", () => {
 
     await pool.query("UPDATE job_queue SET leased_until = now() - interval '1 minute'");
     expect(await stalledJobs()).toBe(1);
+  });
+
+  // A worker that throws goes through failJob, which counts attempts. A worker
+  // whose process dies does not: the row is left `running` and only its lease
+  // lapses. The attempt budget therefore has to be enforced at claim time too,
+  // or a job that kills its worker is reclaimed forever.
+  it("stops reclaiming a job that has burned its whole attempt budget", async () => {
+    await enqueueJob({ workspaceId: WS, kind: "sync", maxAttempts: 2 });
+
+    // Two claims, each ended by a death rather than a throw.
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      expect(await claimJob(`worker-${attempt}`, ["sync"])).not.toBeNull();
+      await pool.query("UPDATE job_queue SET leased_until = now() - interval '1 minute'");
+    }
+
+    expect(await claimJob("worker-3", ["sync"])).toBeNull();
+  });
+
+  it("marks an abandoned job failed instead of leaving it running forever", async () => {
+    const job = await enqueueJob({ workspaceId: WS, kind: "sync", maxAttempts: 1 });
+    await claimJob("worker-a", ["sync"]);
+    await pool.query("UPDATE job_queue SET leased_until = now() - interval '1 minute'");
+
+    expect(await reapAbandonedJobs()).toBe(1);
+
+    const { rows } = await pool.query(
+      "SELECT status, error, finished_at FROM job_queue WHERE id=$1",
+      [job.id],
+    );
+    // Terminal, and with a reason: a reader that only ever saw 'running' told
+    // the customer a refresh was in progress that nothing was working on.
+    expect(rows[0].status).toBe("failed");
+    expect(rows[0].error).toMatch(/stopped before it finished/);
+    expect(rows[0].finished_at).not.toBeNull();
+  });
+
+  it("leaves a job alone while it still holds its lease or has attempts left", async () => {
+    // Live lease, budget spent.
+    await enqueueJob({ workspaceId: WS, kind: "sync", maxAttempts: 1 });
+    await claimJob("worker-a", ["sync"]);
+    expect(await reapAbandonedJobs()).toBe(0);
+
+    // Lapsed lease, but a retry is still owed — claimJob resumes this one.
+    await pool.query("DELETE FROM job_queue");
+    await enqueueJob({ workspaceId: WS, kind: "sync", maxAttempts: 3 });
+    await claimJob("worker-a", ["sync"]);
+    await pool.query("UPDATE job_queue SET leased_until = now() - interval '1 minute'");
+    expect(await reapAbandonedJobs()).toBe(0);
+    expect(await claimJob("worker-b", ["sync"])).not.toBeNull();
   });
 
   it("extends the lease on heartbeat", async () => {

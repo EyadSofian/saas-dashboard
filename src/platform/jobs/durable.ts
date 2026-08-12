@@ -99,6 +99,14 @@ export async function enqueueJob(input: EnqueueInput): Promise<{ id: string; cre
  * SKIP LOCKED is what makes this safe with many workers: a row already being
  * claimed by another transaction is skipped instead of blocking, so throughput
  * scales with worker count instead of serialising on the queue head.
+ *
+ * The attempt budget is enforced here and not only in `failJob`. A handler that
+ * throws goes through `failJob`, which counts attempts and eventually gives up.
+ * A handler whose *process* dies — an OOM, a deploy, a host restart — never
+ * reaches that code at all: the row simply stays `running` until its lease
+ * lapses. Without the budget in this query such a job is reclaimed forever,
+ * each reclaim incrementing `attempts` against a limit nothing consults, and a
+ * customer watches "Refreshing" that will never end.
  */
 export async function claimJob(workerId: string, kinds: string[]): Promise<DurableJob | null> {
   return withAdmin(async (client) => {
@@ -113,6 +121,7 @@ export async function claimJob(workerId: string, kinds: string[]): Promise<Durab
          SELECT id FROM job_queue
           WHERE kind = ANY($3)
             AND run_after <= now()
+            AND attempts < max_attempts
             AND (
               status = 'queued'
               -- A running job whose lease expired: its worker died, so it is
@@ -297,6 +306,14 @@ export class JobWorker {
     while (this.running && !this.controller.signal.aborted) {
       let worked = false;
       try {
+        // Before claiming anything, close out whatever died without being able
+        // to report it. Cheap, and it runs on every idle poll, so a job
+        // orphaned by a deploy reaches a terminal state within seconds rather
+        // than waiting for someone to notice.
+        const reaped = await reapAbandonedJobs();
+        if (reaped > 0) {
+          console.error(`[job-queue] marked ${reaped} abandoned job(s) as failed`);
+        }
         worked = await this.tick();
       } catch (error) {
         // A queue-level failure (database blip) must not kill the loop; the
@@ -321,5 +338,31 @@ export async function stalledJobs(): Promise<number> {
       "SELECT count(*)::text AS count FROM job_queue WHERE status='running' AND leased_until < now()",
     );
     return Number(rows[0].count);
+  });
+}
+
+/**
+ * Closes out jobs that died mid-run and have no attempts left.
+ *
+ * `claimJob` refuses to reclaim these, which is what stops the endless retry —
+ * but refusing to reclaim is not the same as finishing. Without this they stay
+ * `running` with a lapsed lease forever, and every reader, the dashboard
+ * included, keeps reporting a refresh that nothing is working on. A terminal
+ * state is what lets the customer be told the truth and try again.
+ */
+export async function reapAbandonedJobs(): Promise<number> {
+  return withAdmin(async (client) => {
+    const { rowCount } = await client.query(
+      `UPDATE job_queue
+          SET status = 'failed',
+              error = COALESCE(error, 'The worker running this job stopped before it finished, and the retry budget is spent.'),
+              finished_at = now(),
+              leased_by = NULL,
+              leased_until = NULL
+        WHERE status = 'running'
+          AND leased_until < now()
+          AND attempts >= max_attempts`,
+    );
+    return rowCount ?? 0;
   });
 }

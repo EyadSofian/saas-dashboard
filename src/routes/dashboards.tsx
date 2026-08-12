@@ -82,6 +82,10 @@ function DashboardsPage() {
   const [syncing, setSyncing] = useState(false);
   const [generation, setGeneration] = useState<{ published_at?: string } | null>(null);
   const [syncFailed, setSyncFailed] = useState(false);
+  // Why the last refresh failed, from the run or the job that carried it. The
+  // API has always returned this; the page used to read only the status beside
+  // it and drop the one field that says what went wrong.
+  const [syncError, setSyncError] = useState<string | null>(null);
   const [syncStatus, setSyncStatus] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -140,7 +144,12 @@ function DashboardsPage() {
       if (syncRes.ok) {
         const body = await syncRes.json();
         setGeneration(body.generation ?? null);
-        setSyncFailed(body.latestRun?.status === "failed");
+        // The job is the outer truth: a run row only exists once the sync got
+        // far enough to create one, and the failures that strand a first-time
+        // customer — nothing approved, no credential — happen before that.
+        const failed = body.latestJob?.status === "failed" || body.latestRun?.status === "failed";
+        setSyncFailed(failed);
+        setSyncError(failed ? (body.latestJob?.error ?? body.latestRun?.error ?? null) : null);
         setSyncStatus(body.latestJob?.status ?? body.latestRun?.status ?? null);
       }
     } catch {
@@ -336,21 +345,38 @@ function DashboardsPage() {
         </div>
       )}
 
-      {!published && (
+      {/* A failed refresh is reported whether or not anything was ever
+          published. Gating this on `published` meant the very first refresh —
+          the one most likely to fail, and the only one the customer cannot
+          diagnose from the data in front of them — failed in silence, leaving
+          "never synced" as the sole explanation of a refresh that had in fact
+          run and lost. */}
+      {syncFailed && (
+        <Notice
+          tone="danger"
+          title={published ? t("last_good") : ar ? "فشل تحديث البيانات" : "The data refresh failed"}
+        >
+          <p>
+            {published
+              ? ar
+                ? "آخر محاولة تحديث فشلت. الأرقام المعروضة من آخر تحديث ناجح."
+                : "The latest refresh failed. The figures below are from the last successful one."
+              : ar
+                ? "آخر محاولة تحديث فشلت، وماحصلش أي نشر بيانات قبل كده."
+                : "The latest refresh failed, and no data had been published before it."}
+          </p>
+          {/* The reason verbatim, already redacted server-side. Paraphrasing it
+              into "something went wrong" is what left the customer with nothing
+              to act on. */}
+          {syncError && <p className="mt-2 font-mono text-xs break-words">{syncError}</p>}
+        </Notice>
+      )}
+
+      {!published && !syncFailed && (
         <Notice tone="warning" title={t("never_synced")}>
           {ar
             ? "مفيش بيانات منشورة لحد دلوقتي. اعتمد الخريطة وشغّل تحديث البيانات."
             : "No data has been published yet. Approve the mapping and run a data refresh."}
-        </Notice>
-      )}
-
-      {/* Last-good: a failed refresh never blanks a healthy dashboard, and it
-          never presents stale data as fresh either. */}
-      {published && syncFailed && (
-        <Notice tone="warning" title={t("last_good")}>
-          {ar
-            ? "آخر محاولة تحديث فشلت. الأرقام المعروضة من آخر تحديث ناجح."
-            : "The latest refresh failed. The figures below are from the last successful one."}
         </Notice>
       )}
 
@@ -478,9 +504,10 @@ function WidgetView({
           <tbody>
             {rows.map((row, index) => (
               <tr key={index}>
-                <Td>
-                  {row.dimensions ? (Object.values(row.dimensions)[0] ?? DASH) : row.metricKey}
-                </Td>
+                {/* A row with no dimension is not a company called
+                    "accounting.invoiced" — it is the ungrouped total, which is
+                    what a metric returns before any data exists to group. */}
+                <Td>{(row.dimensions && Object.values(row.dimensions)[0]) || DASH}</Td>
                 <Td className="tabular-nums">{renderValue(row, currency, lang)}</Td>
               </tr>
             ))}

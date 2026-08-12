@@ -151,31 +151,47 @@ export async function runSync(
   job: JobCallbacks,
   options: StartSyncOptions = {},
 ): Promise<void> {
-  const manifest = await currentManifest(context);
-  if (!manifest || manifest.status !== "published") {
-    throw new Error("Publish an approved mapping before syncing.");
-  }
-
-  const [mappings, policyRows] = await Promise.all([
-    listMappings(context, manifest.id),
-    listPolicies(context, manifest.id),
-  ]);
-  const policies = Object.fromEntries(policyRows.map((p) => [p.policyKey, p.value]));
-
-  const entityModels = await withWorkspace(context, async (client) => {
-    const { rows } = await client.query<{ canonical_entity: string; odoo_model: string }>(
-      `SELECT canonical_entity, odoo_model FROM semantic_entity_mappings
-        WHERE workspace_id = $1 AND manifest_id = $2 AND odoo_model <> ''`,
-      [context.workspaceId, manifest.id],
-    );
-    return new Map(rows.map((r) => [r.canonical_entity, r.odoo_model]));
-  });
-
-  const plans = buildExtractionPlans({ mappings, entityModels, policies });
-  if (!plans.length) throw new Error("No approved mappings to sync.");
-
-  const { connectionId, credentials } = await credentialsFor(context);
+  // The attempt is recorded before anything can refuse it. Every reason a sync
+  // can be turned away below — no published manifest, nothing approved, no
+  // connection, an unreadable credential — used to be thrown *before* health
+  // was touched at all, so the most common first-run failures left no trace on
+  // the Data health page and the customer was told only that data had never
+  // synced, which described the symptom and hid the cause.
   await recordAttempt(context, "sync");
+
+  const { plans, manifest, connectionId, credentials } = await (async () => {
+    const manifest = await currentManifest(context);
+    if (!manifest || manifest.status !== "published") {
+      throw new Error("Publish an approved mapping before syncing.");
+    }
+
+    const [mappings, policyRows] = await Promise.all([
+      listMappings(context, manifest.id),
+      listPolicies(context, manifest.id),
+    ]);
+    const policies = Object.fromEntries(policyRows.map((p) => [p.policyKey, p.value]));
+
+    const entityModels = await withWorkspace(context, async (client) => {
+      const { rows } = await client.query<{ canonical_entity: string; odoo_model: string }>(
+        `SELECT canonical_entity, odoo_model FROM semantic_entity_mappings
+          WHERE workspace_id = $1 AND manifest_id = $2 AND odoo_model <> ''`,
+        [context.workspaceId, manifest.id],
+      );
+      return new Map(rows.map((r) => [r.canonical_entity, r.odoo_model]));
+    });
+
+    const plans = buildExtractionPlans({ mappings, entityModels, policies });
+    if (!plans.length) throw new Error("No approved mappings to sync.");
+
+    const credential = await credentialsFor(context);
+    return { plans, manifest, ...credential };
+  })().catch(async (error) => {
+    // Refusals are recorded exactly like extraction failures. The run never
+    // started, so there is no generation to protect and nothing to roll back —
+    // only a reason to make visible.
+    await recordFailure(context, "sync", error);
+    throw error;
+  });
 
   {
     const ctx = job;
@@ -236,12 +252,18 @@ export async function runSync(
                 async (page) => {
                   const rows = page.map((record) => toCanonicalRow(plan, record));
                   written += await upsertRows(context, generation, plan.target, rows);
+                  // Per page, not per entity: a lease is measured in minutes and
+                  // one entity can take far longer than that. A sync that does
+                  // not say it is alive gets its job reclaimed underneath it,
+                  // and the customer sees a refresh that restarts forever.
+                  await ctx.heartbeat();
                 },
                 ctx.signal,
               );
 
               stats.push({ entity: plan.entity, read, written });
               await ctx.checkpoint({ completedEntities: stats.map((s) => s.entity) });
+              await ctx.heartbeat();
             }
           },
         );
