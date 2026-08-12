@@ -67,19 +67,29 @@ been run and passed.
 
 ---
 
-## Phase 4 — Validation and reconciliation
+## Phase 4 — Validation and reconciliation ✅ delivered
 
-**Why now:** the product currently asks a customer to trust the mapping. It
-should prove it instead.
+The product no longer asks to be trusted; it shows the source value beside its
+own for every measure.
 
-- Row-count and total comparison against Odoo before a generation publishes.
-- A reconciliation screen showing differences with drilldown to the record.
-- Publication blocked on failed critical financial rules; explicit acceptance
-  required for non-critical gaps.
-- Data-quality rules per workspace with results surfaced in Data Health.
+- Row counts and money totals compared against Odoo before a generation
+  publishes, using `search_count` and `read_group` so verifying a million rows
+  costs one round trip rather than a second extract.
+- The comparison applies the **same approved domain and the same upper bound**
+  the extract used. Without both it would report differences that are not
+  errors — all invoices against only posted ones, or rows written after the
+  read.
+- Counts must match exactly; money tolerates 0.5% for rounding, judged relative
+  to the source so a gap that is rounding at 50,000 is a failure at 200.
+- A critical difference **blocks** publication and has no acceptance path.
+  Warnings can be accepted by a named person who states a reason.
+- An unreadable model is recorded as unavailable, never as a mismatch —
+  reporting "0 vs 5,000" for a model we were denied would be a lie in the other
+  direction.
+- Quality rules catch what reconciliation cannot: totals can match perfectly
+  while every row carries a null date, which makes every period report empty.
 
-**Exit:** a customer can see, for their own data, that collected revenue matches
-what Odoo reports, within a stated tolerance.
+**Still open:** drilldown from a failing check to the offending records.
 
 ---
 

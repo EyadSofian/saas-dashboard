@@ -22,6 +22,7 @@ import { Route as ApiAuthSplatRouteImport } from './routes/api/auth.$'
 import { Route as ApiV1DataHealthRouteImport } from './routes/api/v1/data-health'
 import { Route as ApiV1DiscoveryRouteImport } from './routes/api/v1/discovery'
 import { Route as ApiV1MappingRouteImport } from './routes/api/v1/mapping'
+import { Route as ApiV1ReconciliationRouteImport } from './routes/api/v1/reconciliation'
 import { Route as ApiV1SchemaSnapshotsRouteImport } from './routes/api/v1/schema-snapshots'
 import { Route as ApiV1SessionRouteImport } from './routes/api/v1/session'
 import { Route as ApiV1SyncRouteImport } from './routes/api/v1/sync'
@@ -96,6 +97,11 @@ const ApiV1MappingRoute = ApiV1MappingRouteImport.update({
   path: '/api/v1/mapping',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiV1ReconciliationRoute = ApiV1ReconciliationRouteImport.update({
+  id: '/api/v1/reconciliation',
+  path: '/api/v1/reconciliation',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiV1SchemaSnapshotsRoute = ApiV1SchemaSnapshotsRouteImport.update({
   id: '/api/v1/schema-snapshots',
   path: '/api/v1/schema-snapshots',
@@ -152,6 +158,7 @@ export interface FileRoutesByFullPath {
   '/api/v1/data-health': typeof ApiV1DataHealthRoute
   '/api/v1/discovery': typeof ApiV1DiscoveryRoute
   '/api/v1/mapping': typeof ApiV1MappingRouteWithChildren
+  '/api/v1/reconciliation': typeof ApiV1ReconciliationRoute
   '/api/v1/schema-snapshots': typeof ApiV1SchemaSnapshotsRoute
   '/api/v1/session': typeof ApiV1SessionRoute
   '/api/v1/sync': typeof ApiV1SyncRoute
@@ -175,6 +182,7 @@ export interface FileRoutesByTo {
   '/api/v1/data-health': typeof ApiV1DataHealthRoute
   '/api/v1/discovery': typeof ApiV1DiscoveryRoute
   '/api/v1/mapping': typeof ApiV1MappingRouteWithChildren
+  '/api/v1/reconciliation': typeof ApiV1ReconciliationRoute
   '/api/v1/schema-snapshots': typeof ApiV1SchemaSnapshotsRoute
   '/api/v1/session': typeof ApiV1SessionRoute
   '/api/v1/sync': typeof ApiV1SyncRoute
@@ -199,6 +207,7 @@ export interface FileRoutesById {
   '/api/v1/data-health': typeof ApiV1DataHealthRoute
   '/api/v1/discovery': typeof ApiV1DiscoveryRoute
   '/api/v1/mapping': typeof ApiV1MappingRouteWithChildren
+  '/api/v1/reconciliation': typeof ApiV1ReconciliationRoute
   '/api/v1/schema-snapshots': typeof ApiV1SchemaSnapshotsRoute
   '/api/v1/session': typeof ApiV1SessionRoute
   '/api/v1/sync': typeof ApiV1SyncRoute
@@ -224,6 +233,7 @@ export interface FileRouteTypes {
     | '/api/v1/data-health'
     | '/api/v1/discovery'
     | '/api/v1/mapping'
+    | '/api/v1/reconciliation'
     | '/api/v1/schema-snapshots'
     | '/api/v1/session'
     | '/api/v1/sync'
@@ -247,6 +257,7 @@ export interface FileRouteTypes {
     | '/api/v1/data-health'
     | '/api/v1/discovery'
     | '/api/v1/mapping'
+    | '/api/v1/reconciliation'
     | '/api/v1/schema-snapshots'
     | '/api/v1/session'
     | '/api/v1/sync'
@@ -270,6 +281,7 @@ export interface FileRouteTypes {
     | '/api/v1/data-health'
     | '/api/v1/discovery'
     | '/api/v1/mapping'
+    | '/api/v1/reconciliation'
     | '/api/v1/schema-snapshots'
     | '/api/v1/session'
     | '/api/v1/sync'
@@ -294,6 +306,7 @@ export interface RootRouteChildren {
   ApiV1DataHealthRoute: typeof ApiV1DataHealthRoute
   ApiV1DiscoveryRoute: typeof ApiV1DiscoveryRoute
   ApiV1MappingRoute: typeof ApiV1MappingRouteWithChildren
+  ApiV1ReconciliationRoute: typeof ApiV1ReconciliationRoute
   ApiV1SchemaSnapshotsRoute: typeof ApiV1SchemaSnapshotsRoute
   ApiV1SessionRoute: typeof ApiV1SessionRoute
   ApiV1SyncRoute: typeof ApiV1SyncRoute
@@ -395,6 +408,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiV1MappingRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/v1/reconciliation': {
+      id: '/api/v1/reconciliation'
+      path: '/api/v1/reconciliation'
+      fullPath: '/api/v1/reconciliation'
+      preLoaderRoute: typeof ApiV1ReconciliationRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/v1/schema-snapshots': {
       id: '/api/v1/schema-snapshots'
       path: '/api/v1/schema-snapshots'
@@ -492,6 +512,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiV1DataHealthRoute: ApiV1DataHealthRoute,
   ApiV1DiscoveryRoute: ApiV1DiscoveryRoute,
   ApiV1MappingRoute: ApiV1MappingRouteWithChildren,
+  ApiV1ReconciliationRoute: ApiV1ReconciliationRoute,
   ApiV1SchemaSnapshotsRoute: ApiV1SchemaSnapshotsRoute,
   ApiV1SessionRoute: ApiV1SessionRoute,
   ApiV1SyncRoute: ApiV1SyncRoute,

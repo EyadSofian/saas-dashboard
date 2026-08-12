@@ -237,6 +237,43 @@ export async function runSync(
         const guard = await shrinkGuard(context, generation, stats);
         if (guard) throw new Error(guard);
 
+        // A generation publishes because it matched the source, not because the
+        // extract finished. The connector is reopened for aggregate-only calls:
+        // search_count and read_group cost one round trip each, so verifying a
+        // million rows is far cheaper than the extract that produced them.
+        const { runReconciliation } = await import("../reconciliation/run");
+        const reconciliation = await withConnector(
+          credentials,
+          {
+            allowedModels: new Set(plans.map((p) => p.odooModel)),
+            fetchImpl: options.fetchImpl,
+            timeoutMs: 60_000,
+          },
+          (connector) =>
+            runReconciliation(context, {
+              generationId: generation,
+              plans,
+              upperBound,
+              connector,
+            }),
+        );
+
+        if (reconciliation.verdict.status === "failed") {
+          const detail = reconciliation.verdict.criticalFailures
+            .map((f) => `${f.key}: source ${f.sourceValue}, ours ${f.canonicalValue}`)
+            .join("; ");
+          // Refused, not warned about. Publishing a revenue total that does not
+          // match the ERP is the single outcome this product exists to prevent.
+          throw new Error(`Reconciliation failed against Odoo — not publishing. ${detail}`);
+        }
+
+        await withWorkspace(context, async (client) => {
+          await client.query(
+            "UPDATE data_generations SET source_upper_bound = $1 WHERE id = $2 AND workspace_id = $3",
+            [upperBound, generation, context.workspaceId],
+          );
+        });
+
         await publishGeneration(context, generation, stats);
         await withWorkspace(context, async (client) => {
           await client.query(
@@ -251,7 +288,12 @@ export async function runSync(
           action: "sync.published",
           targetType: "data_generation",
           targetId: generation,
-          metadata: { stats, manifestVersion: manifest.version },
+          metadata: {
+            stats,
+            manifestVersion: manifest.version,
+            reconciliation: reconciliation.verdict.status,
+            warnings: reconciliation.verdict.warnings.length,
+          },
         });
         return;
       } catch (error) {

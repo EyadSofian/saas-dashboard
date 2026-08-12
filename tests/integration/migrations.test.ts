@@ -14,6 +14,7 @@ const EXPECTED_ORDER = [
   "0003_semantic_layer",
   "0004_canonical_and_dashboards",
   "0005_durable_jobs_and_watermarks",
+  "0006_reconciliation",
 ];
 
 let database: TestDatabase;
@@ -107,6 +108,9 @@ describe("migrateUp", () => {
       "job_queue",
       "sync_watermarks",
       "sync_tombstones",
+      "reconciliation_runs",
+      "reconciliation_checks",
+      "data_quality_results",
     ]) {
       expect(await tableExists(table), `${table} missing`).toBe(true);
     }
