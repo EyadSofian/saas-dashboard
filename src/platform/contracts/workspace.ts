@@ -83,6 +83,8 @@ export const workspaceSchema = z
       "permission_failed",
       "discovering",
       "snapshot_ready",
+      "mapping_review",
+      "published",
       "failed",
     ]),
     createdAt: z.string(),

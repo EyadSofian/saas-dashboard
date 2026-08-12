@@ -21,10 +21,12 @@ import { Route as WorkspacesNewRouteImport } from './routes/workspaces.new'
 import { Route as ApiAuthSplatRouteImport } from './routes/api/auth.$'
 import { Route as ApiV1DataHealthRouteImport } from './routes/api/v1/data-health'
 import { Route as ApiV1DiscoveryRouteImport } from './routes/api/v1/discovery'
+import { Route as ApiV1MappingRouteImport } from './routes/api/v1/mapping'
 import { Route as ApiV1SchemaSnapshotsRouteImport } from './routes/api/v1/schema-snapshots'
 import { Route as ApiV1SessionRouteImport } from './routes/api/v1/session'
 import { Route as ApiV1WorkspacesRouteImport } from './routes/api/v1/workspaces'
 import { Route as ApiV1ConnectionsOdooRouteImport } from './routes/api/v1/connections.odoo'
+import { Route as ApiV1MappingPublishRouteImport } from './routes/api/v1/mapping.publish'
 import { Route as ApiV1ConnectionsOdooTestConnectionRouteImport } from './routes/api/v1/connections.odoo.test-connection'
 
 const IndexRoute = IndexRouteImport.update({
@@ -87,6 +89,11 @@ const ApiV1DiscoveryRoute = ApiV1DiscoveryRouteImport.update({
   path: '/api/v1/discovery',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiV1MappingRoute = ApiV1MappingRouteImport.update({
+  id: '/api/v1/mapping',
+  path: '/api/v1/mapping',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiV1SchemaSnapshotsRoute = ApiV1SchemaSnapshotsRouteImport.update({
   id: '/api/v1/schema-snapshots',
   path: '/api/v1/schema-snapshots',
@@ -106,6 +113,11 @@ const ApiV1ConnectionsOdooRoute = ApiV1ConnectionsOdooRouteImport.update({
   id: '/api/v1/connections/odoo',
   path: '/api/v1/connections/odoo',
   getParentRoute: () => rootRouteImport,
+} as any)
+const ApiV1MappingPublishRoute = ApiV1MappingPublishRouteImport.update({
+  id: '/publish',
+  path: '/publish',
+  getParentRoute: () => ApiV1MappingRoute,
 } as any)
 const ApiV1ConnectionsOdooTestConnectionRoute =
   ApiV1ConnectionsOdooTestConnectionRouteImport.update({
@@ -127,10 +139,12 @@ export interface FileRoutesByFullPath {
   '/api/auth/$': typeof ApiAuthSplatRoute
   '/api/v1/data-health': typeof ApiV1DataHealthRoute
   '/api/v1/discovery': typeof ApiV1DiscoveryRoute
+  '/api/v1/mapping': typeof ApiV1MappingRouteWithChildren
   '/api/v1/schema-snapshots': typeof ApiV1SchemaSnapshotsRoute
   '/api/v1/session': typeof ApiV1SessionRoute
   '/api/v1/workspaces': typeof ApiV1WorkspacesRoute
   '/api/v1/connections/odoo': typeof ApiV1ConnectionsOdooRouteWithChildren
+  '/api/v1/mapping/publish': typeof ApiV1MappingPublishRoute
   '/api/v1/connections/odoo/test-connection': typeof ApiV1ConnectionsOdooTestConnectionRoute
 }
 export interface FileRoutesByTo {
@@ -146,10 +160,12 @@ export interface FileRoutesByTo {
   '/api/auth/$': typeof ApiAuthSplatRoute
   '/api/v1/data-health': typeof ApiV1DataHealthRoute
   '/api/v1/discovery': typeof ApiV1DiscoveryRoute
+  '/api/v1/mapping': typeof ApiV1MappingRouteWithChildren
   '/api/v1/schema-snapshots': typeof ApiV1SchemaSnapshotsRoute
   '/api/v1/session': typeof ApiV1SessionRoute
   '/api/v1/workspaces': typeof ApiV1WorkspacesRoute
   '/api/v1/connections/odoo': typeof ApiV1ConnectionsOdooRouteWithChildren
+  '/api/v1/mapping/publish': typeof ApiV1MappingPublishRoute
   '/api/v1/connections/odoo/test-connection': typeof ApiV1ConnectionsOdooTestConnectionRoute
 }
 export interface FileRoutesById {
@@ -166,10 +182,12 @@ export interface FileRoutesById {
   '/api/auth/$': typeof ApiAuthSplatRoute
   '/api/v1/data-health': typeof ApiV1DataHealthRoute
   '/api/v1/discovery': typeof ApiV1DiscoveryRoute
+  '/api/v1/mapping': typeof ApiV1MappingRouteWithChildren
   '/api/v1/schema-snapshots': typeof ApiV1SchemaSnapshotsRoute
   '/api/v1/session': typeof ApiV1SessionRoute
   '/api/v1/workspaces': typeof ApiV1WorkspacesRoute
   '/api/v1/connections/odoo': typeof ApiV1ConnectionsOdooRouteWithChildren
+  '/api/v1/mapping/publish': typeof ApiV1MappingPublishRoute
   '/api/v1/connections/odoo/test-connection': typeof ApiV1ConnectionsOdooTestConnectionRoute
 }
 export interface FileRouteTypes {
@@ -187,10 +205,12 @@ export interface FileRouteTypes {
     | '/api/auth/$'
     | '/api/v1/data-health'
     | '/api/v1/discovery'
+    | '/api/v1/mapping'
     | '/api/v1/schema-snapshots'
     | '/api/v1/session'
     | '/api/v1/workspaces'
     | '/api/v1/connections/odoo'
+    | '/api/v1/mapping/publish'
     | '/api/v1/connections/odoo/test-connection'
   fileRoutesByTo: FileRoutesByTo
   to:
@@ -206,10 +226,12 @@ export interface FileRouteTypes {
     | '/api/auth/$'
     | '/api/v1/data-health'
     | '/api/v1/discovery'
+    | '/api/v1/mapping'
     | '/api/v1/schema-snapshots'
     | '/api/v1/session'
     | '/api/v1/workspaces'
     | '/api/v1/connections/odoo'
+    | '/api/v1/mapping/publish'
     | '/api/v1/connections/odoo/test-connection'
   id:
     | '__root__'
@@ -225,10 +247,12 @@ export interface FileRouteTypes {
     | '/api/auth/$'
     | '/api/v1/data-health'
     | '/api/v1/discovery'
+    | '/api/v1/mapping'
     | '/api/v1/schema-snapshots'
     | '/api/v1/session'
     | '/api/v1/workspaces'
     | '/api/v1/connections/odoo'
+    | '/api/v1/mapping/publish'
     | '/api/v1/connections/odoo/test-connection'
   fileRoutesById: FileRoutesById
 }
@@ -245,6 +269,7 @@ export interface RootRouteChildren {
   ApiAuthSplatRoute: typeof ApiAuthSplatRoute
   ApiV1DataHealthRoute: typeof ApiV1DataHealthRoute
   ApiV1DiscoveryRoute: typeof ApiV1DiscoveryRoute
+  ApiV1MappingRoute: typeof ApiV1MappingRouteWithChildren
   ApiV1SchemaSnapshotsRoute: typeof ApiV1SchemaSnapshotsRoute
   ApiV1SessionRoute: typeof ApiV1SessionRoute
   ApiV1WorkspacesRoute: typeof ApiV1WorkspacesRoute
@@ -337,6 +362,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiV1DiscoveryRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/v1/mapping': {
+      id: '/api/v1/mapping'
+      path: '/api/v1/mapping'
+      fullPath: '/api/v1/mapping'
+      preLoaderRoute: typeof ApiV1MappingRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/v1/schema-snapshots': {
       id: '/api/v1/schema-snapshots'
       path: '/api/v1/schema-snapshots'
@@ -365,6 +397,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiV1ConnectionsOdooRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/v1/mapping/publish': {
+      id: '/api/v1/mapping/publish'
+      path: '/publish'
+      fullPath: '/api/v1/mapping/publish'
+      preLoaderRoute: typeof ApiV1MappingPublishRouteImport
+      parentRoute: typeof ApiV1MappingRoute
+    }
     '/api/v1/connections/odoo/test-connection': {
       id: '/api/v1/connections/odoo/test-connection'
       path: '/test-connection'
@@ -374,6 +413,18 @@ declare module '@tanstack/react-router' {
     }
   }
 }
+
+interface ApiV1MappingRouteChildren {
+  ApiV1MappingPublishRoute: typeof ApiV1MappingPublishRoute
+}
+
+const ApiV1MappingRouteChildren: ApiV1MappingRouteChildren = {
+  ApiV1MappingPublishRoute: ApiV1MappingPublishRoute,
+}
+
+const ApiV1MappingRouteWithChildren = ApiV1MappingRoute._addFileChildren(
+  ApiV1MappingRouteChildren,
+)
 
 interface ApiV1ConnectionsOdooRouteChildren {
   ApiV1ConnectionsOdooTestConnectionRoute: typeof ApiV1ConnectionsOdooTestConnectionRoute
@@ -400,6 +451,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiAuthSplatRoute: ApiAuthSplatRoute,
   ApiV1DataHealthRoute: ApiV1DataHealthRoute,
   ApiV1DiscoveryRoute: ApiV1DiscoveryRoute,
+  ApiV1MappingRoute: ApiV1MappingRouteWithChildren,
   ApiV1SchemaSnapshotsRoute: ApiV1SchemaSnapshotsRoute,
   ApiV1SessionRoute: ApiV1SessionRoute,
   ApiV1WorkspacesRoute: ApiV1WorkspacesRoute,
