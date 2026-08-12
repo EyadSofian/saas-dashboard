@@ -181,6 +181,12 @@ export interface UpsertConnectionInput {
   database: string;
   login: string;
   secret: StoredSecret;
+  /**
+   * False when `secret` is the row's own stored ciphertext, reused unchanged by
+   * a save that only edited the URL, database or login. Decides whether the
+   * credential is treated as new — see the verdict handling below.
+   */
+  credentialReplaced: boolean;
 }
 
 /**
@@ -205,10 +211,17 @@ export async function upsertConnection(
       if (input.connectionId !== connectionId) {
         throw new Error("Connection identity changed while storing its credential.");
       }
+      // The status already returns to 'draft' here, so the verdict beside it
+      // goes too — a row reading "draft" next to `last_test_state = success` is
+      // reporting a result for a connection that no longer exists. A verdict
+      // describes the whole tuple: host, database, login and credential. Any
+      // edit invalidates it, including one that kept the stored key, so "not
+      // tested yet" is the honest answer until the test is run again.
       await client.query(
         `UPDATE odoo_connections
             SET base_url = $1, database = $2, login = $3,
-                status = 'draft', updated_at = now()
+                status = 'draft', last_test_state = NULL, last_tested_at = NULL,
+                updated_at = now()
           WHERE id = $4 AND workspace_id = $5`,
         [input.baseUrl, input.database, input.login, connectionId, context.workspaceId],
       );
@@ -233,6 +246,11 @@ export async function upsertConnection(
       }
     }
 
+    // Written on every save, including one that reuses the stored ciphertext:
+    // the row is then rewritten with identical bytes, which keeps the invariant
+    // that a connection and its credential are created together. Only
+    // `rotated_at` distinguishes the two, so it keeps meaning "when the key last
+    // changed" rather than "when the form was last submitted".
     await client.query(
       `INSERT INTO connection_secret_refs
          (workspace_id, connection_id, purpose, adapter_id, key_id, ciphertext, iv, auth_tag)
@@ -243,7 +261,8 @@ export async function upsertConnection(
          ciphertext = EXCLUDED.ciphertext,
          iv         = EXCLUDED.iv,
          auth_tag   = EXCLUDED.auth_tag,
-         rotated_at = now()`,
+         rotated_at = CASE WHEN $8::boolean THEN now()
+                           ELSE connection_secret_refs.rotated_at END`,
       [
         context.workspaceId,
         connectionId,
@@ -252,6 +271,7 @@ export async function upsertConnection(
         input.secret.ciphertext,
         input.secret.iv,
         input.secret.authTag,
+        input.credentialReplaced,
       ],
     );
 

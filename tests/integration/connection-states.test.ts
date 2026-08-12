@@ -2,13 +2,25 @@
 //
 // Milestone acceptance C (every connection state is covered) and F (a failed
 // discovery preserves the previous snapshot).
-import { describe, expect, it, vi } from "vitest";
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { Pool } from "pg";
+import { readFile } from "node:fs/promises";
+import path from "node:path";
 import { testOdooConnection } from "@/platform/odoo/connection-test";
+import { odooConnectionInputSchema, type WorkspaceContext } from "@/platform/contracts";
 import { discoverSchema } from "@/platform/discovery/discover";
 import { SafeOdooConnector } from "@/platform/odoo/connector";
 import { DISCOVERY_ALLOWLIST } from "@/platform/odoo/allowlist";
-import { LocalAesGcmSecretStore, SecretStoreError } from "@/platform/secrets";
+import { getSecretStore, LocalAesGcmSecretStore, SecretStoreError } from "@/platform/secrets";
+import { closePool } from "@/platform/db/pool";
+import {
+  getConnection,
+  loadConnectionSecret,
+  recordConnectionTest,
+  upsertConnection,
+} from "@/platform/workspace/repository";
 import { createMockOdoo, DEFAULT_MODELS, MOCK_CREDENTIALS } from "../fixtures/mock-odoo";
+import { startTestDatabase, type TestDatabase } from "../fixtures/postgres";
 
 const SMALL_SET = ["crm.lead", "sale.order"] as const;
 
@@ -172,6 +184,214 @@ describe("acceptance C · credential rotation and corruption", () => {
     await expect(
       store.get(ref, { ...stored, ciphertext: corrupted.toString("base64") }),
     ).rejects.toThrow(SecretStoreError);
+  });
+});
+
+describe("the API key is optional once one is stored", () => {
+  const details = {
+    baseUrl: "https://company.odoo.test",
+    database: "company_db",
+    login: "analytics@company.test",
+  };
+
+  it("accepts a save that omits the key entirely", () => {
+    expect(odooConnectionInputSchema.parse(details).apiKey).toBeUndefined();
+  });
+
+  it("reads the empty field the wizard always sends as 'keep the stored key'", () => {
+    // The wizard posts the whole form, so the field is present and empty rather
+    // than absent. Rejecting that as too short is what produced the confusing
+    // 400 on a URL-only correction.
+    expect(odooConnectionInputSchema.parse({ ...details, apiKey: "" }).apiKey).toBeUndefined();
+  });
+
+  it("carries a supplied key through unchanged", () => {
+    expect(odooConnectionInputSchema.parse({ ...details, apiKey: "  spaced  " }).apiKey).toBe(
+      "  spaced  ",
+    );
+  });
+
+  it("still refuses an oversized key", () => {
+    expect(
+      odooConnectionInputSchema.safeParse({ ...details, apiKey: "x".repeat(513) }).success,
+    ).toBe(false);
+  });
+});
+
+/** The reuse and verdict rules live in SQL, so they run against a real PostgreSQL. */
+describe("acceptance C · a save that reuses the stored credential", () => {
+  const ORG = "00000000-0000-4000-8000-00000000000c";
+  const WS = "00000000-0000-4000-8000-00000000001c";
+  const USER = "00000000-0000-4000-8000-0000000000c1";
+
+  const context: WorkspaceContext = {
+    workspaceId: WS,
+    organizationId: ORG,
+    userId: USER,
+    roles: ["workspace_owner"],
+  };
+
+  const DETAILS = {
+    baseUrl: "https://company.odoo.test",
+    database: "company_db",
+    login: "analytics@company.test",
+  };
+
+  let database: TestDatabase;
+  let pool: Pool;
+
+  /**
+   * The POST handler's own sequence: resolve the connection id first (the AAD
+   * binding needs one before the row exists), then either encrypt a new key or
+   * carry the stored ciphertext across untouched.
+   */
+  async function save(
+    ctx: WorkspaceContext,
+    { apiKey, ...details }: Partial<typeof DETAILS> & { apiKey?: string },
+  ) {
+    const existing = await getConnection(ctx);
+    const connectionId = existing?.id ?? crypto.randomUUID();
+    const secret =
+      apiKey === undefined
+        ? existing && (await loadConnectionSecret(ctx, existing.id))
+        : await getSecretStore().put(
+            { workspaceId: ctx.workspaceId, connectionId, purpose: "odoo_api_key" },
+            apiKey,
+          );
+    // What the route answers with a 400 rather than storing a connection whose
+    // credential does not exist.
+    if (!secret) throw new Error("no stored credential to reuse");
+    return upsertConnection(ctx, {
+      ...DETAILS,
+      ...details,
+      connectionId,
+      secret,
+      credentialReplaced: apiKey !== undefined,
+    });
+  }
+
+  async function secretRow(connectionId: string) {
+    const { rows } = await pool.query<{ ciphertext: string; rotated_at: Date | null }>(
+      "SELECT ciphertext, rotated_at FROM connection_secret_refs WHERE connection_id = $1",
+      [connectionId],
+    );
+    return rows[0];
+  }
+
+  beforeAll(async () => {
+    database = await startTestDatabase();
+    process.env.DATABASE_URL = database.url;
+    pool = new Pool({ connectionString: database.url, max: 4 });
+
+    for (const id of [
+      "0001_foundation",
+      "0002_schema_discovery",
+      "0003_semantic_layer",
+      "0004_canonical_and_dashboards",
+      "0005_durable_jobs_and_watermarks",
+      "0006_reconciliation",
+      "0007_dashboard_builder",
+      "0008_copilot",
+      "0009_plans_and_lifecycle",
+      "0010_invitations",
+      "0011_requeue_system_audit_discovery_failures",
+    ]) {
+      await pool.query(
+        await readFile(path.resolve(process.cwd(), "migrations", `${id}.up.sql`), "utf8"),
+      );
+    }
+
+    await pool.query("INSERT INTO organizations (id,name,slug) VALUES ($1,'Company','company')", [
+      ORG,
+    ]);
+    await pool.query("INSERT INTO users (id,email,name) VALUES ($1,'owner@c.test','Owner')", [
+      USER,
+    ]);
+    await pool.query(
+      "INSERT INTO workspaces (id,organization_id,name,slug) VALUES ($1,$2,'Company','production')",
+      [WS, ORG],
+    );
+    await pool.query(
+      "INSERT INTO memberships (user_id,organization_id,workspace_id,roles) VALUES ($1,$2,$3,ARRAY['workspace_owner'])",
+      [USER, ORG, WS],
+    );
+  }, 120_000);
+
+  afterAll(async () => {
+    await closePool().catch(() => undefined);
+    await pool?.end().catch(() => undefined);
+    await database?.stop().catch(() => undefined);
+  });
+
+  beforeEach(async () => {
+    // Each case starts from a workspace with no connection at all.
+    await pool.query("DELETE FROM odoo_connections WHERE workspace_id = $1", [WS]);
+  });
+
+  it("keeps the ciphertext and its rotation time byte-for-byte", async () => {
+    const created = await save(context, { apiKey: "first-key" });
+    const before = await secretRow(created.id);
+
+    const updated = await save(context, { login: "reporting@company.test" });
+    const after = await secretRow(created.id);
+
+    expect(updated.id).toBe(created.id);
+    expect(updated.login).toBe("reporting@company.test");
+    expect(updated.hasSecret).toBe(true);
+    expect(after.ciphertext).toBe(before.ciphertext);
+    // `rotated_at` means "when the key last changed", not "when the form was
+    // last submitted".
+    expect(after.rotated_at?.toISOString()).toBe(before.rotated_at?.toISOString());
+
+    // And the carried-over credential is still the readable one.
+    await expect(
+      getSecretStore().get(
+        { workspaceId: WS, connectionId: created.id, purpose: "odoo_api_key" },
+        (await loadConnectionSecret(context, created.id))!,
+      ),
+    ).resolves.toBe("first-key");
+  });
+
+  it("drops a verdict that described the details it just changed", async () => {
+    const created = await save(context, { apiKey: "first-key" });
+    await recordConnectionTest(context, created.id, "success", "17.0");
+
+    const updated = await save(context, { baseUrl: "https://moved.odoo.test" });
+
+    // The old verdict was about a different host, so reporting it would be a
+    // claim about a connection that no longer exists.
+    expect(updated.baseUrl).toBe("https://moved.odoo.test");
+    expect(updated.lastTestState).toBeNull();
+    expect(updated.lastTestedAt).toBeNull();
+    expect(updated.status).toBe("draft");
+    // The verdict went; the Odoo version discovered under it is not a verdict.
+    expect(updated.odooVersion).toBe("17.0");
+  });
+
+  it("replaces the credential when a key is supplied", async () => {
+    const created = await save(context, { apiKey: "first-key" });
+    const before = await secretRow(created.id);
+
+    await save(context, { apiKey: "replacement-key" });
+    const after = await secretRow(created.id);
+
+    expect(after.ciphertext).not.toBe(before.ciphertext);
+    expect(after.rotated_at).not.toBeNull();
+    await expect(
+      getSecretStore().get(
+        { workspaceId: WS, connectionId: created.id, purpose: "odoo_api_key" },
+        (await loadConnectionSecret(context, created.id))!,
+      ),
+    ).resolves.toBe("replacement-key");
+  });
+
+  it("has nothing to reuse before a first key is stored", async () => {
+    // The route turns this into a 400 rather than writing a connection whose
+    // credential does not exist.
+    await expect(save(context, { login: "someone@company.test" })).rejects.toThrow(
+      "no stored credential to reuse",
+    );
+    expect(await getConnection(context)).toBeNull();
   });
 });
 

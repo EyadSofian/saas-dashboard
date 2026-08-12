@@ -99,6 +99,7 @@ describe("the credential never reaches the database in plaintext", () => {
       database: "db",
       login: "user",
       secret,
+      credentialReplaced: true,
     });
 
     // The id used as AES-GCM AAD is the id the repository persisted. This is a

@@ -406,13 +406,17 @@ function OnboardingPage() {
 
           <div className="flex flex-wrap items-center gap-3">
             <Button
+              // An empty key is allowed once one is stored: the API keeps the
+              // existing credential, so correcting a URL, a database name or a
+              // login costs nothing. This is what the stored-key hint above has
+              // always promised.
               disabled={
                 !mayWrite ||
                 busy !== null ||
                 !form.baseUrl ||
                 !form.database ||
                 !form.login ||
-                !form.apiKey
+                (!form.apiKey && !connection?.hasSecret)
               }
               onClick={() =>
                 call(
