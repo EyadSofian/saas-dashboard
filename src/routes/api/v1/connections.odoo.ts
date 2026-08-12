@@ -59,60 +59,70 @@ export const Route = createFileRoute("/api/v1/connections/odoo")({
         }
 
         try {
-          const { getSecretStore, SecretStoreError } = await import("@/platform/secrets");
-          const { getConnection, upsertConnection, requirePermission, setOnboardingState } =
-            await import("@/platform/workspace/repository");
-          const { writeAudit } = await import("@/platform/audit/log");
-          const { AUDIT_ACTIONS } = await import("@/platform/contracts");
+          const { withSecretRedacted } = await import("@/platform/audit/redact");
+          // Everything from here on runs with the API key registered for
+          // redaction, so an audit record, a log line or an error raised inside
+          // this handler cannot carry it — whatever field name it lands in.
+          return await withSecretRedacted(parsed.data.apiKey, async () => {
+            const { getSecretStore, SecretStoreError } = await import("@/platform/secrets");
+            const { getConnection, upsertConnection, requirePermission, setOnboardingState } =
+              await import("@/platform/workspace/repository");
+            const { writeAudit } = await import("@/platform/audit/log");
+            const { AUDIT_ACTIONS } = await import("@/platform/contracts");
 
-          requirePermission(guard.context, "connection.write");
+            requirePermission(guard.context, "connection.write");
 
-          // A connection id is needed for the AAD binding, so an existing
-          // connection is reused and a new one gets its id here.
-          const existing = await getConnection(guard.context);
-          const connectionId = existing?.id ?? crypto.randomUUID();
+            // A connection id is needed for the AAD binding, so an existing
+            // connection is reused and a new one gets its id here.
+            const existing = await getConnection(guard.context);
+            const connectionId = existing?.id ?? crypto.randomUUID();
 
-          let secret;
-          try {
-            secret = await getSecretStore().put(
-              {
-                workspaceId: guard.context.workspaceId,
-                connectionId,
-                purpose: "odoo_api_key",
-              },
-              parsed.data.apiKey,
-            );
-          } catch (error) {
-            if (error instanceof SecretStoreError && error.kind === "production_guard") {
-              // Fail closed: refuse to store rather than store unsafely.
-              return errorResponse(
-                "Credential storage is not available in this environment.",
-                503,
+            let secret;
+            try {
+              secret = await getSecretStore().put(
                 {
-                  reason: "secret_store_not_production_grade",
+                  workspaceId: guard.context.workspaceId,
+                  connectionId,
+                  purpose: "odoo_api_key",
                 },
+                parsed.data.apiKey,
               );
+            } catch (error) {
+              if (error instanceof SecretStoreError && error.kind === "production_guard") {
+                // Fail closed: refuse to store rather than store unsafely.
+                return errorResponse(
+                  "Credential storage is not available in this environment.",
+                  503,
+                  {
+                    reason: "secret_store_not_production_grade",
+                  },
+                );
+              }
+              throw error;
             }
-            throw error;
-          }
 
-          const connection = await upsertConnection(guard.context, {
-            baseUrl: origin,
-            database: parsed.data.database,
-            login: parsed.data.login,
-            secret,
+            const connection = await upsertConnection(guard.context, {
+              baseUrl: origin,
+              database: parsed.data.database,
+              login: parsed.data.login,
+              secret,
+            });
+
+            await writeAudit(guard.context, {
+              action: existing ? AUDIT_ACTIONS.connectionUpdated : AUDIT_ACTIONS.connectionCreated,
+              targetType: "odoo_connection",
+              targetId: connection.id,
+              // Record what changed, never the value that changed.
+              metadata: {
+                baseUrl: origin,
+                database: parsed.data.database,
+                login: parsed.data.login,
+              },
+            });
+            await setOnboardingState(guard.context, "connection_pending");
+
+            return jsonResponse({ ok: true, connection }, existing ? 200 : 201);
           });
-
-          await writeAudit(guard.context, {
-            action: existing ? AUDIT_ACTIONS.connectionUpdated : AUDIT_ACTIONS.connectionCreated,
-            targetType: "odoo_connection",
-            targetId: connection.id,
-            // Record what changed, never the value that changed.
-            metadata: { baseUrl: origin, database: parsed.data.database, login: parsed.data.login },
-          });
-          await setOnboardingState(guard.context, "connection_pending");
-
-          return jsonResponse({ ok: true, connection }, existing ? 200 : 201);
         } catch (error) {
           return handleRouteError(error);
         }

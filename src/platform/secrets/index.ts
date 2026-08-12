@@ -167,14 +167,22 @@ export function appEnv(): AppEnv {
  * exactly why the production default is the strict one.
  */
 export function assertProductionSafe(store: SecretStore): void {
-  if (appEnv() === "production" && !store.isProductionGrade) {
-    throw new SecretStoreError(
-      `Refusing to store a customer credential: adapter "${store.adapterId}" is not ` +
-        `production-grade. Configure a production SecretStore adapter (ADR-0002), or ` +
-        `set APP_ENV=staging if this deployment only ever holds test credentials.`,
-      "production_guard",
-    );
-  }
+  if (appEnv() !== "production" || store.isProductionGrade) return;
+
+  // One adapter may run in production behind an explicit, deliberately awkward
+  // opt-in. It still reports itself as not production-grade — the override is
+  // an operator accepting a documented risk, not the adapter changing what it
+  // is. See docs/runbooks/secret-store.md.
+  if (store.adapterId === "railway-aes-gcm" && railwayOverrideEnabled()) return;
+
+  throw new SecretStoreError(
+    `Refusing to store a customer credential: adapter "${store.adapterId}" is not ` +
+      `production-grade. Configure a production SecretStore adapter (ADR-0002), ` +
+      `set APP_ENV=staging if this deployment only ever holds test credentials, or — ` +
+      `for the railway-aes-gcm adapter only — accept the documented risk with ` +
+      `ALLOW_RAILWAY_SECRET_STORE_IN_PRODUCTION=1.`,
+    "production_guard",
+  );
 }
 
 let cached: SecretStore | null = null;
@@ -186,10 +194,13 @@ export function getSecretStore(): SecretStore {
     case "local-aes-gcm":
       cached = new LocalAesGcmSecretStore();
       return cached;
+    case "railway-aes-gcm":
+      cached = new RailwaySecretStore();
+      return cached;
     default:
       // A misspelled adapter name must not silently fall back to the weakest one.
       throw new SecretStoreError(
-        `Unknown SECRET_STORE_ADAPTER "${adapter}". Known adapters: local-aes-gcm.`,
+        `Unknown SECRET_STORE_ADAPTER "${adapter}". Known adapters: local-aes-gcm, railway-aes-gcm.`,
         "not_configured",
       );
   }
@@ -206,3 +217,13 @@ export function secretsMatch(a: string, b: string): boolean {
   const right = Buffer.from(b);
   return left.length === right.length && timingSafeEqual(left, right);
 }
+
+// Imported after the interface and error type are defined, so railway.ts can
+// import them back without a circular initialisation.
+import { RailwaySecretStore, railwayOverrideEnabled } from "./railway";
+export {
+  RailwaySecretStore,
+  railwayOverrideEnabled,
+  deriveKeyId,
+  RAILWAY_ADAPTER_ID,
+} from "./railway";

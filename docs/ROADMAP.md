@@ -50,20 +50,28 @@ this size but will want splitting under load).
 
 ---
 
-## Phase 3 — Production secret storage
+## Phase 3 — Production secret storage ◑ interim adapter shipped
 
-**Why now:** `APP_ENV=production` currently refuses to store customer
-credentials at all, because the only adapter is development-grade. Until this
-lands, the product cannot legitimately onboard a paying customer.
+`railway-aes-gcm` unblocks the first customers without AWS or Vault. Same
+AES-256-GCM envelope encryption and AAD binding a KMS adapter would use; the
+root key lives in the platform environment instead of behind a KMS API.
 
-- `KmsSecretStore` (AWS KMS or Vault) with per-workspace data keys under a
-  shared CMK, keeping the AAD binding.
-- Root-key rotation with a re-encryption pass.
-- Pinned-IP dialer to close the SSRF TOCTOU window between DNS resolution and
-  connect.
+It reports `isProductionGrade: false` permanently and needs two explicit
+variables to run in production, so nobody arrives there by copying a default.
+Key versioning and a two-key rotation path are implemented, and a test scans
+every text column of a real database for a canary credential.
 
-**Exit:** a production deployment can store a real Odoo key; a restore drill has
-been run and passed.
+**Accepted for 1–3 customers. The honest limitation:** anyone who can read the
+process environment — deploy access, a shell on the service, the platform
+itself — can decrypt every stored credential, and no decryption is logged.
+
+**Replace with KMS/Vault when** someone gains deploy access who should not see
+customer credentials, a customer asks how their key is protected, a fourth
+customer connects, or a security review appears. See
+`docs/runbooks/secret-store.md`.
+
+**Still open:** the KMS adapter itself, a passed restore drill, and the
+pinned-IP dialer closing the SSRF TOCTOU window.
 
 ---
 
