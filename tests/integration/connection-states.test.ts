@@ -3,7 +3,8 @@
 // Milestone acceptance C (every connection state is covered) and F (a failed
 // discovery preserves the previous snapshot).
 import { describe, expect, it, vi } from "vitest";
-import { testOdooConnection } from "@/platform/odoo/connection-test";
+import { connectionTestFailure, testOdooConnection } from "@/platform/odoo/connection-test";
+import { CONNECTION_TEST_STATES, connectionTestResultSchema } from "@/platform/contracts";
 import { discoverSchema } from "@/platform/discovery/discover";
 import { SafeOdooConnector } from "@/platform/odoo/connector";
 import { DISCOVERY_ALLOWLIST } from "@/platform/odoo/allowlist";
@@ -172,6 +173,52 @@ describe("acceptance C · credential rotation and corruption", () => {
     await expect(
       store.get(ref, { ...stored, ciphertext: corrupted.toString("base64") }),
     ).rejects.toThrow(SecretStoreError);
+  });
+
+  // The test-connection route branches on this exact `kind` to turn an
+  // unreadable credential into a rendered state instead of a 500. If the kind
+  // ever drifts, that branch silently stops matching.
+  it.each([
+    [
+      "a rotated root key",
+      async () => {
+        const stored = await store.put(ref, MOCK_CREDENTIALS.apiKey);
+        const other = new LocalAesGcmSecretStore("T3nGpQ8bZ1wLxK5vRj7cYm2dHsA9uEfNoIiPzXvCbTy=");
+        return other.get(ref, stored);
+      },
+    ],
+    [
+      "a ciphertext copied from another workspace",
+      async () => {
+        const stored = await store.put(ref, MOCK_CREDENTIALS.apiKey);
+        return store.get({ ...ref, workspaceId: "33333333-3333-4333-8333-333333333333" }, stored);
+      },
+    ],
+  ])("%s reports decrypt_failed, the kind the route recovers from", async (_name, attempt) => {
+    await expect(attempt()).rejects.toMatchObject({ kind: "decrypt_failed" });
+  });
+});
+
+describe("acceptance C · every state is renderable", () => {
+  // The wizard renders `state` and `message` for every outcome, so a state
+  // without a message would be a blank banner rather than a caught error.
+  it.each(CONNECTION_TEST_STATES)("%s carries a message in both languages", (state) => {
+    const result = connectionTestFailure(state);
+    expect(connectionTestResultSchema.safeParse(result).success).toBe(true);
+    expect(result.message.ar.length).toBeGreaterThan(0);
+    expect(result.message.en.length).toBeGreaterThan(0);
+  });
+
+  it("credential_unreadable tells the customer how to recover", () => {
+    const result = connectionTestFailure("credential_unreadable");
+    expect(result.ok).toBe(false);
+    expect(result.probes).toEqual([]);
+    // Odoo is never contacted, so there is nothing to report about the server.
+    expect(result.serverVersion).toBeNull();
+    expect(result.uid).toBeNull();
+    // Actionable, not diagnostic: re-entering the key is the whole recovery.
+    expect(result.message.en).toMatch(/enter the API key again/i);
+    expect(result.message.ar).toContain("أدخل المفتاح مرة أخرى");
   });
 });
 

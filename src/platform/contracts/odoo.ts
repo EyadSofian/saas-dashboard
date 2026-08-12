@@ -55,6 +55,10 @@ export const CONNECTION_TEST_STATES = [
   "auth_failed",
   "access_denied",
   "not_configured",
+  // The credential is stored but unreadable — a rotated root key, a restored
+  // database, or tampered ciphertext. Odoo is never contacted, so this is a
+  // test outcome with its own recovery step, not a server fault.
+  "credential_unreadable",
 ] as const;
 
 export type ConnectionTestState = (typeof CONNECTION_TEST_STATES)[number];

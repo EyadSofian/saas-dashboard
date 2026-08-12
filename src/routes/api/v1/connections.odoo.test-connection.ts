@@ -23,23 +23,39 @@ export const Route = createFileRoute("/api/v1/connections/odoo/test-connection")
           const stored = await loadConnectionSecret(guard.context, connection.id);
           if (!stored) return errorResponse("This connection has no stored credential.", 409);
 
-          const { getSecretStore } = await import("@/platform/secrets");
-          const apiKey = await getSecretStore().get(
-            {
-              workspaceId: guard.context.workspaceId,
-              connectionId: connection.id,
-              purpose: "odoo_api_key",
-            },
-            stored,
-          );
+          const { getSecretStore, SecretStoreError } = await import("@/platform/secrets");
+          const { testOdooConnection, connectionTestFailure } =
+            await import("@/platform/odoo/connection-test");
 
-          const { testOdooConnection } = await import("@/platform/odoo/connection-test");
-          const result = await testOdooConnection({
-            baseUrl: connection.baseUrl,
-            database: connection.database,
-            login: connection.login,
-            apiKey,
-          });
+          // An unreadable credential is a failure mode of *this test* — a rotated
+          // root key or a restored database, both recoverable by re-entering the
+          // key. It therefore becomes a state the wizard renders, rather than a
+          // 500 carrying an internal message, and follows the same recording,
+          // audit and onboarding-state path as every other failure below.
+          let apiKey: string | null = null;
+          try {
+            apiKey = await getSecretStore().get(
+              {
+                workspaceId: guard.context.workspaceId,
+                connectionId: connection.id,
+                purpose: "odoo_api_key",
+              },
+              stored,
+            );
+          } catch (error) {
+            if (!(error instanceof SecretStoreError) || error.kind !== "decrypt_failed")
+              throw error;
+          }
+
+          const result =
+            apiKey === null
+              ? connectionTestFailure("credential_unreadable")
+              : await testOdooConnection({
+                  baseUrl: connection.baseUrl,
+                  database: connection.database,
+                  login: connection.login,
+                  apiKey,
+                });
 
           await recordConnectionTest(
             guard.context,

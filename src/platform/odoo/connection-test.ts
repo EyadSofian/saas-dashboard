@@ -4,7 +4,12 @@
 // what the integration user may read. Read permission is therefore probed
 // separately for every model in scope, and a denial is recorded as data
 // (a PermissionGap) rather than raised as a failure.
-import type { ConnectionTestResult, PermissionGap, PermissionProbe } from "../contracts";
+import type {
+  ConnectionTestResult,
+  ConnectionTestState,
+  PermissionGap,
+  PermissionProbe,
+} from "../contracts";
 import { DISCOVERY_ALLOWLIST } from "./allowlist";
 import { OdooError, withConnector, type OdooCredentials } from "./connector";
 import { UnsafeUrlError } from "./url-guard";
@@ -13,7 +18,9 @@ import { safeErrorMessage } from "../audit/redact";
 /** Under the 15 s objective for a healthy Odoo (PRD §10). */
 const TEST_TIMEOUT_MS = 12_000;
 
-const MESSAGES: Record<string, { ar: string; en: string }> = {
+// Keyed by the state union, not by `string`: a new state without a message is
+// then a compile error rather than an undefined banner at runtime.
+const MESSAGES: Record<ConnectionTestState, { ar: string; en: string }> = {
   success: {
     ar: "تم الاتصال بأودو بنجاح.",
     en: "Connected to Odoo successfully.",
@@ -46,7 +53,33 @@ const MESSAGES: Record<string, { ar: string; en: string }> = {
     ar: "بيانات الاتصال غير مكتملة.",
     en: "The connection details are incomplete.",
   },
+  credential_unreadable: {
+    // Says what to do, not what went wrong internally: the reason is
+    // deliberately indistinguishable, and the recovery is the same either way.
+    ar: "تعذر فك تشفير مفتاح الـ API المحفوظ. أدخل المفتاح مرة أخرى ثم احفظ الاتصال.",
+    en: "The stored API key could not be decrypted. Enter the API key again and save the connection.",
+  },
 };
+
+/**
+ * A failure state carrying no probe data, for callers that fail before the
+ * connector is reached. Keeps those outcomes in the same shape the wizard
+ * already renders instead of turning them into exceptions.
+ */
+export function connectionTestFailure(
+  state: ConnectionTestState,
+  checkedAt: string = new Date().toISOString(),
+): ConnectionTestResult {
+  return {
+    ok: false,
+    state,
+    serverVersion: null,
+    uid: null,
+    probes: [],
+    message: MESSAGES[state],
+    checkedAt,
+  };
+}
 
 function gapFor(
   model: string,
@@ -86,15 +119,7 @@ export async function testOdooConnection(
   const checkedAt = new Date().toISOString();
   const allowedModels = new Set<string>(models);
 
-  const fail = (state: keyof typeof MESSAGES): ConnectionTestResult => ({
-    ok: false,
-    state: state as ConnectionTestResult["state"],
-    serverVersion: null,
-    uid: null,
-    probes: [],
-    message: MESSAGES[state],
-    checkedAt,
-  });
+  const fail = (state: ConnectionTestState) => connectionTestFailure(state, checkedAt);
 
   try {
     return await withConnector(

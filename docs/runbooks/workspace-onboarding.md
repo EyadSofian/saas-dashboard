@@ -158,6 +158,25 @@ non-standard port, or a hostname resolving to a private address. This is
 working as intended. For a genuinely internal Odoo, add the host to
 `ODOO_DEV_HOST_ALLOWLIST` **in a non-production environment only**.
 
+### Connection test says `credential_unreadable`
+
+Odoo was never contacted. The stored ciphertext did not survive the GCM check,
+which has three causes and one shared fix:
+
+- `SECRET_STORE_ROOT_KEY` changed or was regenerated (the common one — a
+  redeploy without the variable pinned).
+- The database was restored from a backup taken under a different root key.
+- The ciphertext or its AAD binding was altered.
+
+The reason is deliberately not distinguished to the caller, so do not try to
+tell them apart from the UI. Recovery is the same either way: re-enter the Odoo
+API key in the wizard and save — that re-encrypts under the current key. If the
+original `SECRET_STORE_ROOT_KEY` still exists, restoring it also works and
+avoids touching every workspace.
+
+Check first whether it is one workspace or all of them: a single workspace
+points at that row, all of them point at the root key.
+
 ### Suspected credential exposure
 
 1. Rotate the Odoo API key in Odoo itself.

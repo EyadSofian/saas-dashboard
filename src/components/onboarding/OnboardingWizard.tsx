@@ -184,6 +184,9 @@ export function OnboardingWizard({ workspaceId }: { workspaceId: string }) {
       }
       setConnection(body.connection);
       setState("connection_pending");
+      // The saved credential is new, so the previous verdict no longer describes
+      // it — drop it rather than leave a stale banner on screen.
+      setTest(null);
       // The key is out of the browser's hands the moment it is stored.
       setForm((f) => ({ ...f, apiKey: "" }));
     } catch {
@@ -242,6 +245,11 @@ export function OnboardingWizard({ workspaceId }: { workspaceId: string }) {
   const readable = useMemo(() => test?.probes.filter((p) => p.canRead).length ?? 0, [test]);
   const gaps = useMemo(() => test?.probes.filter((p) => p.gap) ?? [], [test]);
 
+  // Falls back to the persisted state so the recovery instruction survives a
+  // reload, like every other piece of wizard state.
+  const credentialUnreadable =
+    (test?.state ?? connection?.lastTestState) === "credential_unreadable";
+
   if (!loaded) {
     return (
       <div className="flex items-center gap-3 rounded-xl border border-border bg-card p-8 text-muted-foreground">
@@ -297,13 +305,17 @@ export function OnboardingWizard({ workspaceId }: { workspaceId: string }) {
           <Field
             label={ar ? "مفتاح الـ API" : "API key"}
             hint={
-              connection?.hasSecret
+              credentialUnreadable
                 ? ar
-                  ? "محفوظ ومشفّر. اكتب مفتاحًا جديدًا فقط لو عايز تغيّره."
-                  : "Stored and encrypted. Enter a new key only to replace it."
-                : ar
-                  ? "بيتحفظ مشفّرًا ومش بيرجع للمتصفح تاني أبدًا."
-                  : "Stored encrypted and never returned to the browser."
+                  ? "المفتاح المحفوظ بقى مش مقروء. اكتبه تاني واحفظ عشان الاتصال يرجع يشتغل."
+                  : "The stored key is no longer readable. Enter it again and save to restore the connection."
+                : connection?.hasSecret
+                  ? ar
+                    ? "محفوظ ومشفّر، ومش بيرجع للمتصفح. اكتبه تاني عشان تحفظ أي تعديل."
+                    : "Stored and encrypted, never returned to the browser. Re-enter it to save any change."
+                  : ar
+                    ? "بيتحفظ مشفّرًا ومش بيرجع للمتصفح تاني أبدًا."
+                    : "Stored encrypted and never returned to the browser."
             }
             value={form.apiKey}
             onChange={(v) => setForm({ ...form, apiKey: v })}
@@ -317,12 +329,11 @@ export function OnboardingWizard({ workspaceId }: { workspaceId: string }) {
           <button
             type="button"
             onClick={saveConnection}
+            // The API requires a key on every save (it re-encrypts rather than
+            // reusing the stored ciphertext), so the button must demand one too
+            // — enabling it without a key only produced a validation error.
             disabled={
-              busy !== null ||
-              !form.baseUrl ||
-              !form.database ||
-              !form.login ||
-              (!form.apiKey && !connection?.hasSecret)
+              busy !== null || !form.baseUrl || !form.database || !form.login || !form.apiKey
             }
             className="inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground disabled:opacity-50"
           >
@@ -551,7 +562,13 @@ function StateBanner({ state, message }: { state: string; message: string }) {
         ? "border-amber-500/40 bg-amber-500/10"
         : "border-destructive/40 bg-destructive/10";
   const Icon =
-    state === "success" ? CheckCircle2 : state === "access_denied" ? ShieldAlert : XCircle;
+    state === "success"
+      ? CheckCircle2
+      : state === "access_denied"
+        ? ShieldAlert
+        : state === "credential_unreadable"
+          ? KeyRound
+          : XCircle;
   return (
     <div className={`flex items-start gap-3 rounded-lg border p-3 text-sm ${tone}`}>
       <Icon className="mt-0.5 size-4 shrink-0" />

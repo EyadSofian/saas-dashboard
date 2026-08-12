@@ -196,9 +196,14 @@ export async function upsertConnection(
     if (existing.rows[0]) {
       connectionId = existing.rows[0].id;
       await client.query(
+        // The credential is re-encrypted on every save, so the previous test
+        // result describes a connection that no longer exists. Clearing it with
+        // the status keeps the row from reporting a stale verdict — including a
+        // `credential_unreadable` that the save has just fixed.
         `UPDATE odoo_connections
             SET base_url = $1, database = $2, login = $3,
-                status = 'draft', updated_at = now()
+                status = 'draft', last_test_state = NULL, last_tested_at = NULL,
+                updated_at = now()
           WHERE id = $4 AND workspace_id = $5`,
         [input.baseUrl, input.database, input.login, connectionId, context.workspaceId],
       );
