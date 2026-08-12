@@ -93,16 +93,20 @@ describe("the credential never reaches the database in plaintext", () => {
   it("is absent from every text column of every table", async () => {
     // Stored through the real repository path, exactly as the API does it.
     const secret = await store.put(ref, ODOO_KEY);
-    await pool.query(
-      "INSERT INTO odoo_connections (id, workspace_id, base_url, database, login) VALUES ($1,$2,'https://a.test','db','user') ON CONFLICT DO NOTHING",
-      [CONNECTION, WS],
-    );
     await upsertConnection(context, {
+      connectionId: CONNECTION,
       baseUrl: "https://a.test",
       database: "db",
       login: "user",
       secret,
     });
+
+    // The id used as AES-GCM AAD is the id the repository persisted. This is a
+    // regression assertion for a production bug where the route encrypted for
+    // one random id and the repository inserted another.
+    const connection = await getConnection(context);
+    expect(connection?.id).toBe(CONNECTION);
+    expect(await store.get({ ...ref, connectionId: connection!.id }, secret)).toBe(ODOO_KEY);
 
     // Exercise the surface most likely to copy a value around, the way the
     // real route does it: any code holding a decrypted key runs inside a

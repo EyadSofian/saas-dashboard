@@ -28,15 +28,25 @@ export const Route = createFileRoute("/api/v1/connections/odoo/test-connection")
           const stored = await loadConnectionSecret(guard.context, connection.id);
           if (!stored) return errorResponse("This connection has no stored credential.", 409);
 
-          const { getSecretStore } = await import("@/platform/secrets");
-          const apiKey = await getSecretStore().get(
-            {
-              workspaceId: guard.context.workspaceId,
-              connectionId: connection.id,
-              purpose: "odoo_api_key",
-            },
-            stored,
-          );
+          const { getSecretStore, SecretStoreError } = await import("@/platform/secrets");
+          let apiKey: string;
+          try {
+            apiKey = await getSecretStore().get(
+              {
+                workspaceId: guard.context.workspaceId,
+                connectionId: connection.id,
+                purpose: "odoo_api_key",
+              },
+              stored,
+            );
+          } catch (error) {
+            if (error instanceof SecretStoreError && error.kind === "decrypt_failed") {
+              return errorResponse("The saved Odoo credential must be entered again.", 409, {
+                reason: "credential_requires_reentry",
+              });
+            }
+            throw error;
+          }
 
           const { testOdooConnection } = await import("@/platform/odoo/connection-test");
           const result = await testOdooConnection({

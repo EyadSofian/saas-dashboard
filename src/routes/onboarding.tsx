@@ -171,7 +171,15 @@ function OnboardingPage() {
       const response = await workspaceFetch(workspaceId, path, init);
       const body = await response.json();
       if (!response.ok) {
-        setError(String(body.error ?? (ar ? "حصلت مشكلة." : "Something went wrong.")));
+        if (body.reason === "credential_requires_reentry") {
+          setError(
+            ar
+              ? "مفتاح أودو المحفوظ مرتبط بسجل تشفير قديم. اكتب API key من جديد واضغط حفظ مرة واحدة."
+              : "The saved Odoo key belongs to an older encryption record. Enter the API key again and press Save once.",
+          );
+        } else {
+          setError(String(body.error ?? (ar ? "حصلت مشكلة." : "Something went wrong.")));
+        }
         return;
       }
       onSuccess(body);

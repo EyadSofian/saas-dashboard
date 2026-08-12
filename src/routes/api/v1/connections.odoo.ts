@@ -102,6 +102,7 @@ export const Route = createFileRoute("/api/v1/connections/odoo")({
             }
 
             const connection = await upsertConnection(guard.context, {
+              connectionId,
               baseUrl: origin,
               database: parsed.data.database,
               login: parsed.data.login,

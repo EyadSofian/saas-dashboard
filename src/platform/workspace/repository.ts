@@ -170,6 +170,13 @@ export async function getConnection(
 }
 
 export interface UpsertConnectionInput {
+  /**
+   * Chosen before encrypting the credential because the connection id is part
+   * of the AES-GCM authenticated data. The exact same id must therefore be
+   * persisted with the ciphertext; generating a second id here would make the
+   * credential permanently undecryptable.
+   */
+  connectionId: string;
   baseUrl: string;
   database: string;
   login: string;
@@ -195,6 +202,9 @@ export async function upsertConnection(
     let connectionId: string;
     if (existing.rows[0]) {
       connectionId = existing.rows[0].id;
+      if (input.connectionId !== connectionId) {
+        throw new Error("Connection identity changed while storing its credential.");
+      }
       await client.query(
         `UPDATE odoo_connections
             SET base_url = $1, database = $2, login = $3,
@@ -203,13 +213,24 @@ export async function upsertConnection(
         [input.baseUrl, input.database, input.login, connectionId, context.workspaceId],
       );
     } else {
+      connectionId = input.connectionId;
       const inserted = await client.query<{ id: string }>(
-        `INSERT INTO odoo_connections (workspace_id, base_url, database, login, status, created_by)
-         VALUES ($1, $2, $3, $4, 'draft', $5)
+        `INSERT INTO odoo_connections
+           (id, workspace_id, base_url, database, login, status, created_by)
+         VALUES ($1, $2, $3, $4, $5, 'draft', $6)
          RETURNING id`,
-        [context.workspaceId, input.baseUrl, input.database, input.login, context.userId],
+        [
+          connectionId,
+          context.workspaceId,
+          input.baseUrl,
+          input.database,
+          input.login,
+          context.userId,
+        ],
       );
-      connectionId = inserted.rows[0].id;
+      if (inserted.rows[0].id !== connectionId) {
+        throw new Error("The stored connection id did not match its encrypted credential.");
+      }
     }
 
     await client.query(
