@@ -8,25 +8,36 @@ export const Route = createFileRoute("/api/health")({
       GET: async () => {
         const { databaseConfigured, getPool } = await import("@/platform/db/pool");
         let database: "ok" | "unreachable" | "not_configured" = "not_configured";
+        let schema: "ok" | "missing" | "unknown" = "unknown";
 
         if (databaseConfigured()) {
           try {
-            await getPool().query("SELECT 1");
+            const result = await getPool().query<{ ready: boolean }>(`
+              SELECT to_regclass('public.users') IS NOT NULL
+                 AND to_regclass('public.accounts') IS NOT NULL
+                 AND to_regclass('public.sessions') IS NOT NULL
+                 AND to_regclass('public.verifications') IS NOT NULL
+                 AND to_regclass('public.workspaces') IS NOT NULL AS ready
+            `);
             database = "ok";
+            schema = result.rows[0]?.ready ? "ok" : "missing";
           } catch {
             database = "unreachable";
           }
         }
 
+        const healthy = database === "ok" && schema === "ok";
         return Response.json(
           {
-            ok: database !== "unreachable",
+            ok: healthy,
             service: "insightos",
             database,
+            schema,
+            release: process.env.RAILWAY_GIT_COMMIT_SHA?.slice(0, 7) ?? "local",
             checkedAt: new Date().toISOString(),
           },
           {
-            status: database === "unreachable" ? 503 : 200,
+            status: healthy ? 200 : 503,
             headers: { "cache-control": "no-store" },
           },
         );

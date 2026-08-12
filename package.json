@@ -9,7 +9,7 @@
   "scripts": {
     "dev": "vite dev",
     "build": "vite build",
-    "start": "npm run db:migrate && node .output/server/index.mjs",
+    "start": "npm run db:migrate:production && node .output/server/index.mjs",
     "typecheck": "tsc --noEmit",
     "lint": "eslint .",
     "format": "prettier --write .",
@@ -19,6 +19,7 @@
     "test:security": "vitest run tests/security",
     "test:integration": "vitest run tests/integration",
     "db:migrate": "node --experimental-strip-types scripts/migrate.ts up",
+    "db:migrate:production": "node scripts/migrate-production.mjs",
     "db:rollback": "node --experimental-strip-types scripts/migrate.ts down"
   },
   "dependencies": {

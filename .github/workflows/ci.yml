@@ -60,6 +60,6 @@ jobs:
           if git grep -nIE 'SECRET_STORE_ROOT_KEY=[A-Za-z0-9+/]{20,}' -- ':!*.example' ':!docs/*'; then
             echo "A root key looks committed."; exit 1
           fi
-          if git grep -nIE '(sk-[A-Za-z0-9]{20,}|xoxb-|AIza[0-9A-Za-z_-]{30,})' -- ':!*.example'; then
+          if git grep -nIE '(sk-[A-Za-z0-9]{20,}|xoxb-|AIza[0-9A-Za-z_-]{30,})' -- ':!*.example' ':!.github/workflows/ci.yml'; then
             echo "An API key looks committed."; exit 1
           fi
