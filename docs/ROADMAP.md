@@ -195,9 +195,10 @@ catalog gets bloated with metrics nobody opens.
 
 | Item | Why it matters |
 | --- | --- |
-| CI pipeline, SBOM, dependency scanning | Nothing currently runs the suite except a person |
+| ~~CI pipeline~~ ✅ | GitHub Actions runs typecheck, lint, 380 tests and build on every push, with security as its own job and a committed-credential grep |
+| SBOM, dependency scanning | Not yet wired |
 | Backup and restore drill | No readiness is claimed until a restore passes |
-| Rate limits per workspace | One customer must not exhaust shared capacity |
+| ~~Rate limits per workspace~~ ✅ | Per-operation budgets in PostgreSQL, each with a written rationale |
 | OpenTelemetry + AI tracing with PII masking | Cost and quality are unmeasurable without it |
 | Accessibility and RTL visual regression | Arabic RTL is a product promise; it needs a test, not a review |
 | Currency conversion with a versioned rate source | The policy exists; the rate source does not yet |
