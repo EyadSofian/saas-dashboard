@@ -1,0 +1,6 @@
+-- 0002 · down
+DROP TABLE IF EXISTS permission_gaps CASCADE;
+DROP TABLE IF EXISTS schema_relations CASCADE;
+DROP TABLE IF EXISTS schema_fields CASCADE;
+DROP TABLE IF EXISTS schema_models CASCADE;
+DROP TABLE IF EXISTS schema_snapshots CASCADE;

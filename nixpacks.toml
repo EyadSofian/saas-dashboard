@@ -1,0 +1,7 @@
+# `npm ci` aborts whenever the lock file cannot satisfy npm's ideal tree exactly,
+# which happens routinely when the builder runs a different npm major than the
+# developer machine and a transitive optional dependency publishes a patch.
+# `npm install` still honours the lock wherever it can and only deviates where
+# the lock is genuinely unsatisfiable.
+[phases.install]
+cmds = ["npm install --no-audit --no-fund"]
