@@ -20,6 +20,54 @@ function createAuth() {
     database: getPool(),
     secret: process.env.BETTER_AUTH_SECRET,
     baseURL: process.env.PUBLIC_APP_URL ?? "http://localhost:3000",
+    // The product schema deliberately uses conventional PostgreSQL plural
+    // table names and snake_case columns. Better Auth defaults to singular
+    // tables with camelCase columns, so keep the mapping explicit here. This
+    // is part of the database contract, not a cosmetic naming preference.
+    user: {
+      modelName: "users",
+      fields: {
+        emailVerified: "email_verified",
+        createdAt: "created_at",
+        updatedAt: "updated_at",
+      },
+    },
+    session: {
+      modelName: "sessions",
+      expiresIn: 60 * 60 * 24 * 7, // 7 days
+      updateAge: 60 * 60 * 24, // refresh at most daily
+      fields: {
+        userId: "user_id",
+        expiresAt: "expires_at",
+        ipAddress: "ip_address",
+        userAgent: "user_agent",
+        createdAt: "created_at",
+        updatedAt: "updated_at",
+      },
+    },
+    account: {
+      modelName: "accounts",
+      fields: {
+        userId: "user_id",
+        accountId: "account_id",
+        providerId: "provider_id",
+        accessToken: "access_token",
+        refreshToken: "refresh_token",
+        accessTokenExpiresAt: "access_token_expires_at",
+        refreshTokenExpiresAt: "refresh_token_expires_at",
+        idToken: "id_token",
+        createdAt: "created_at",
+        updatedAt: "updated_at",
+      },
+    },
+    verification: {
+      modelName: "verifications",
+      fields: {
+        expiresAt: "expires_at",
+        createdAt: "created_at",
+        updatedAt: "updated_at",
+      },
+    },
     emailAndPassword: {
       enabled: true,
       // On by default. An analytics product that accepts any typed address will
@@ -39,11 +87,11 @@ function createAuth() {
         await trySend(verificationMessage(user.email, url));
       },
     },
-    session: {
-      expiresIn: 60 * 60 * 24 * 7, // 7 days
-      updateAge: 60 * 60 * 24, // refresh at most daily
-    },
     advanced: {
+      // Every identity primary key is PostgreSQL uuid. The Better Auth default
+      // is an opaque text id, which PostgreSQL correctly rejects for our uuid
+      // columns unless this is declared.
+      database: { generateId: "uuid" },
       useSecureCookies: process.env.NODE_ENV === "production",
       defaultCookieAttributes: { httpOnly: true, sameSite: "lax" },
     },
