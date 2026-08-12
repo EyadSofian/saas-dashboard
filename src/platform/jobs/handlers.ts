@@ -51,6 +51,20 @@ export function startWorker(): JobWorker {
   return worker;
 }
 
+/**
+ * Best-effort nudge used after an interactive enqueue.
+ *
+ * The normal five-second worker loop remains the source of truth. This simply
+ * removes the awkward gap after a user clicks a button and also gives serverless
+ * style runtimes a chance to execute the accepted job while the request process
+ * is definitely awake. `SKIP LOCKED` keeps this safe if the background loop wins
+ * the race.
+ */
+export function nudgeWorker(): void {
+  const active = startWorker();
+  void active.tick().catch(() => undefined);
+}
+
 export function stopWorker(): void {
   worker?.stop();
   worker = null;

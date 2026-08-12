@@ -152,7 +152,9 @@ function OnboardingPage() {
         setJob(latestJob);
         setSnapshot(body.snapshot ?? null);
         setRunning(jobActive || body.latestRun?.status === "running");
-        setRunFailed(latestJob?.status === "failed" || body.latestRun?.status === "failed");
+        setRunFailed(
+          !body.snapshot && (latestJob?.status === "failed" || body.latestRun?.status === "failed"),
+        );
       }
     } catch {
       // A refresh failure is not a wizard failure: keep what is on screen.
@@ -261,6 +263,39 @@ function OnboardingPage() {
           );
         })}
       </ol>
+
+      {previouslyVerified && !snapshot && !running && (
+        <Notice
+          tone={runFailed ? "warning" : "brand"}
+          icon={runFailed ? <AlertTriangle className="size-4" /> : <RefreshCw className="size-4" />}
+          title={
+            runFailed
+              ? ar
+                ? "قراءة البنية محتاجة إعادة محاولة"
+                : "Structure discovery needs another attempt"
+              : ar
+                ? "الاتصال جاهز — اقرأ بنية أودو"
+                : "Connection ready — discover your Odoo structure"
+          }
+        >
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <p>
+              {ar
+                ? "اضغط مرة واحدة؛ هنقرأ أسماء الموديلات والحقول وبعدها ننقلك لمراجعة الخريطة."
+                : "Click once; we will read model and field names, then take you to mapping review."}
+            </p>
+            <Button
+              disabled={!can(workspace, "discovery.run") || busy !== null}
+              onClick={() =>
+                call("discovering", "/api/v1/discovery", { method: "POST" }, () => setRunning(true))
+              }
+            >
+              <RefreshCw className="size-4" />
+              {runFailed ? (ar ? "أعد المحاولة" : "Retry discovery") : t("start_discovery")}
+            </Button>
+          </div>
+        </Notice>
+      )}
 
       {error && (
         <Notice tone="danger" icon={<AlertTriangle className="size-4" />}>

@@ -140,6 +140,8 @@ export async function startSync(context: WorkspaceContext): Promise<{ jobId: str
 
   const { enqueueJob } = await import("../jobs/durable");
   const { id } = await enqueueJob({ workspaceId: context.workspaceId, kind: "sync" });
+  const { nudgeWorker } = await import("../jobs/handlers");
+  nudgeWorker();
   return { jobId: id };
 }
 

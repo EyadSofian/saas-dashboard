@@ -71,6 +71,16 @@ export const Route = createFileRoute("/api/v1/connections/odoo/test-connection")
                 : "failed",
           );
 
+          // A successful connection test is the user's approval to continue
+          // the onboarding journey. Queue discovery immediately instead of
+          // making them hunt for a second button below a long permissions
+          // table. The durable queue keeps this safe and idempotent.
+          let discoveryJobId: string | null = null;
+          if (result.state === "success") {
+            const { startDiscovery } = await import("@/platform/discovery/run");
+            discoveryJobId = (await startDiscovery(guard.context)).jobId;
+          }
+
           const { writeAudit } = await import("@/platform/audit/log");
           const { AUDIT_ACTIONS } = await import("@/platform/contracts");
           await writeAudit(guard.context, {
@@ -85,7 +95,7 @@ export const Route = createFileRoute("/api/v1/connections/odoo/test-connection")
             },
           });
 
-          return jsonResponse({ ok: true, result });
+          return jsonResponse({ ok: true, result, discoveryJobId });
         } catch (error) {
           return handleRouteError(error);
         }

@@ -142,6 +142,8 @@ export async function startDiscovery(context: WorkspaceContext): Promise<{ jobId
   // Reflect accepted work immediately. Previously the state changed only when
   // a worker claimed the job, so a queued scan could look like it never began.
   await setOnboardingState(context, "discovering");
+  const { nudgeWorker } = await import("../jobs/handlers");
+  nudgeWorker();
   return { jobId: id };
 }
 
