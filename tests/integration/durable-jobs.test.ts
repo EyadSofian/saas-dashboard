@@ -14,9 +14,11 @@ import {
   enqueueJob,
   failJob,
   heartbeatJob,
+  jobContext,
   JobWorker,
   stalledJobs,
 } from "@/platform/jobs/durable";
+import { writeAudit } from "@/platform/audit/log";
 import {
   commitWatermark,
   incrementalDomain,
@@ -231,9 +233,111 @@ describe("failure and retry", () => {
     const { rows } = await pool.query("SELECT error FROM job_queue WHERE id=$1", [job.id]);
     expect(rows[0].error).toBe("failed");
   });
+
+  it("requeues only the newest discovery exhausted by the system audit FK bug", async () => {
+    const actorFkError =
+      'insert or update on table "audit_logs" violates foreign key constraint "audit_logs_actor_user_id_fkey"';
+    const old = await pool.query<{ id: string }>(
+      `INSERT INTO job_queue
+         (workspace_id, kind, status, checkpoint, attempts, max_attempts, error, created_at, finished_at)
+       VALUES ($1, 'discovery', 'failed', '{"models":12}'::jsonb, 3, 3, $2,
+               now() - interval '2 hours', now() - interval '2 hours')
+       RETURNING id`,
+      [WS, actorFkError],
+    );
+    const newest = await pool.query<{ id: string }>(
+      `INSERT INTO job_queue
+         (workspace_id, kind, status, checkpoint, attempts, max_attempts, error, created_at, finished_at)
+       VALUES ($1, 'discovery', 'failed', '{"models":24,"fields":3369}'::jsonb, 3, 3, $2,
+               now() - interval '1 hour', now() - interval '1 hour')
+       RETURNING id`,
+      [WS, actorFkError],
+    );
+    const unrelated = await pool.query<{ id: string }>(
+      `INSERT INTO job_queue
+         (workspace_id, kind, status, attempts, max_attempts, error, created_at, finished_at)
+       VALUES ($1, 'discovery', 'failed', 3, 3, 'Odoo timed out',
+               now(), now())
+       RETURNING id`,
+      [WS],
+    );
+
+    await pool.query(
+      await readFile(
+        path.resolve(
+          process.cwd(),
+          "migrations/0011_requeue_system_audit_discovery_failures.up.sql",
+        ),
+        "utf8",
+      ),
+    );
+
+    const { rows } = await pool.query<{
+      id: string;
+      status: string;
+      attempts: number;
+      error: string | null;
+      checkpoint: Record<string, unknown>;
+    }>("SELECT id, status, attempts, error, checkpoint FROM job_queue ORDER BY created_at");
+    const byId = new Map(rows.map((row) => [row.id, row]));
+
+    expect(byId.get(old.rows[0].id)?.status).toBe("failed");
+    expect(byId.get(unrelated.rows[0].id)?.status).toBe("failed");
+    expect(byId.get(newest.rows[0].id)).toMatchObject({
+      status: "queued",
+      attempts: 0,
+      error: null,
+      checkpoint: { models: 24, fields: 3369 },
+    });
+  });
+
+  it("does not requeue an audit-FK failure when discovery is already live", async () => {
+    const failed = await pool.query<{ id: string }>(
+      `INSERT INTO job_queue
+         (workspace_id, kind, status, attempts, max_attempts, error, finished_at)
+       VALUES ($1, 'discovery', 'failed', 3, 3,
+               'audit_logs_actor_user_id_fkey', now())
+       RETURNING id`,
+      [WS],
+    );
+    await enqueueJob({ workspaceId: WS, kind: "discovery" });
+
+    await pool.query(
+      await readFile(
+        path.resolve(
+          process.cwd(),
+          "migrations/0011_requeue_system_audit_discovery_failures.up.sql",
+        ),
+        "utf8",
+      ),
+    );
+
+    const { rows } = await pool.query("SELECT status FROM job_queue WHERE id=$1", [
+      failed.rows[0].id,
+    ]);
+    expect(rows[0].status).toBe("failed");
+  });
 });
 
 describe("worker loop", () => {
+  it("stores system job audit events without a fake user foreign key", async () => {
+    const systemContext = await jobContext(WS);
+    await expect(
+      writeAudit(systemContext, {
+        action: "discovery.started",
+        targetType: "connection",
+        targetId: "test",
+        metadata: {},
+      }),
+    ).resolves.toBeUndefined();
+
+    const { rows } = await pool.query(
+      "SELECT actor_user_id FROM audit_logs WHERE workspace_id=$1 ORDER BY occurred_at DESC LIMIT 1",
+      [WS],
+    );
+    expect(rows[0].actor_user_id).toBeNull();
+  });
+
   it("runs a handler and marks the job succeeded", async () => {
     await enqueueJob({ workspaceId: WS, kind: "sync" });
     let ran = false;

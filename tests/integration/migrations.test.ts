@@ -19,6 +19,7 @@ const EXPECTED_ORDER = [
   "0008_copilot",
   "0009_plans_and_lifecycle",
   "0010_invitations",
+  "0011_requeue_system_audit_discovery_failures",
 ];
 
 let database: TestDatabase;

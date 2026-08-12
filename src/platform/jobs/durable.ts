@@ -281,6 +281,9 @@ export class JobWorker {
       });
       await completeJob(job.id);
     } catch (error) {
+      // Never let a background failure disappear. Only the already-sanitized
+      // first line is logged; decrypted credentials are never included.
+      console.error(`[job:${job.kind}:${job.id}] ${safeErrorMessage(error)}`);
       await failJob(job.id, error);
     }
     return true;
@@ -295,9 +298,10 @@ export class JobWorker {
       let worked = false;
       try {
         worked = await this.tick();
-      } catch {
+      } catch (error) {
         // A queue-level failure (database blip) must not kill the loop; the
-        // next poll retries.
+        // next poll retries. It must still be visible in Railway logs.
+        console.error(`[job-queue] ${safeErrorMessage(error)}`);
       }
       // Back off only when idle, so a backlog drains without waiting.
       if (!worked) await new Promise((resolve) => setTimeout(resolve, interval));

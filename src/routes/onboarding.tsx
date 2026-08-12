@@ -1,5 +1,5 @@
-import { createFileRoute, Link } from "@tanstack/react-router";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   AlertTriangle,
   ArrowLeft,
@@ -106,6 +106,8 @@ function OnboardingPage() {
   const { t, lang } = useI18n();
   const ar = lang === "ar";
   const { workspace, refresh: refreshSession } = useSession();
+  const navigate = useNavigate();
+  const pendingDiscoveryJobId = useRef<string | null>(null);
 
   const [connection, setConnection] = useState<Connection | null>(null);
   const [test, setTest] = useState<ConnectionTestResult | null>(null);
@@ -173,6 +175,30 @@ function OnboardingPage() {
     const timer = setInterval(() => void refresh(), 3_000);
     return () => clearInterval(timer);
   }, [running, refresh]);
+
+  // A scan started from this page should finish the wizard journey, not leave
+  // the customer hunting for another button after the snapshot is ready. Tie
+  // navigation to that exact job: an older ready snapshot must not make a new
+  // scan navigate before it actually succeeds.
+  useEffect(() => {
+    const pendingId = pendingDiscoveryJobId.current;
+    if (!pendingId || job?.id !== pendingId) return;
+
+    if (job.status === "succeeded" && snapshot) {
+      pendingDiscoveryJobId.current = null;
+      void navigate({ to: "/mapping" });
+    }
+
+    if (job.status === "failed" || job.status === "cancelled") {
+      pendingDiscoveryJobId.current = null;
+    }
+  }, [job, navigate, snapshot]);
+
+  const discoveryAccepted = useCallback((body: Record<string, unknown>) => {
+    const jobId = typeof body.jobId === "string" ? body.jobId : null;
+    pendingDiscoveryJobId.current = jobId;
+    setRunning(true);
+  }, []);
 
   const readable = useMemo(() => test?.probes.filter((p) => p.canRead).length ?? 0, [test]);
   const gaps = useMemo(() => test?.probes.filter((p) => p.gap) ?? [], [test]);
@@ -287,12 +313,34 @@ function OnboardingPage() {
             <Button
               disabled={!can(workspace, "discovery.run") || busy !== null}
               onClick={() =>
-                call("discovering", "/api/v1/discovery", { method: "POST" }, () => setRunning(true))
+                call("discovering", "/api/v1/discovery", { method: "POST" }, discoveryAccepted)
               }
             >
               <RefreshCw className="size-4" />
               {runFailed ? (ar ? "أعد المحاولة" : "Retry discovery") : t("start_discovery")}
             </Button>
+          </div>
+        </Notice>
+      )}
+
+      {snapshot && !running && (
+        <Notice
+          tone="success"
+          icon={<CheckCircle2 className="size-4" />}
+          title={ar ? "قراءة بنية أودو اكتملت" : "Odoo discovery is complete"}
+        >
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <p>
+              {ar
+                ? "كل حاجة جاهزة. كمل لمراجعة معاني الحقول واعتمادها."
+                : "Everything is ready. Continue to review and approve the field meanings."}
+            </p>
+            <Link to="/mapping">
+              <Button>
+                {ar ? "كمل لمراجعة الخريطة" : "Continue to mapping"}
+                <Arrow className="size-4" />
+              </Button>
+            </Link>
           </div>
         </Notice>
       )}
@@ -485,8 +533,11 @@ function OnboardingPage() {
                     <Button
                       disabled={!can(workspace, "discovery.run") || busy !== null || running}
                       onClick={() =>
-                        call("discovering", "/api/v1/discovery", { method: "POST" }, () =>
-                          setRunning(true),
+                        call(
+                          "discovering",
+                          "/api/v1/discovery",
+                          { method: "POST" },
+                          discoveryAccepted,
                         )
                       }
                     >
@@ -586,8 +637,11 @@ function OnboardingPage() {
                   <Button
                     disabled={!can(workspace, "discovery.run") || busy !== null || running}
                     onClick={() =>
-                      call("discovering", "/api/v1/discovery", { method: "POST" }, () =>
-                        setRunning(true),
+                      call(
+                        "discovering",
+                        "/api/v1/discovery",
+                        { method: "POST" },
+                        discoveryAccepted,
                       )
                     }
                   >
@@ -659,8 +713,11 @@ function OnboardingPage() {
                   size="sm"
                   disabled={!can(workspace, "discovery.run") || busy !== null}
                   onClick={() =>
-                    call("discovering", "/api/v1/discovery", { method: "POST" }, () =>
-                      setRunning(true),
+                    call(
+                      "discovering",
+                      "/api/v1/discovery",
+                      { method: "POST" },
+                      discoveryAccepted,
                     )
                   }
                 >
@@ -732,8 +789,11 @@ function OnboardingPage() {
                         variant="secondary"
                         disabled={!can(workspace, "discovery.run") || busy !== null}
                         onClick={() =>
-                          call("discovering", "/api/v1/discovery", { method: "POST" }, () =>
-                            setRunning(true),
+                          call(
+                            "discovering",
+                            "/api/v1/discovery",
+                            { method: "POST" },
+                            discoveryAccepted,
                           )
                         }
                       >

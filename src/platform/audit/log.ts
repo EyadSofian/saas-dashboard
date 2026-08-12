@@ -7,6 +7,11 @@ import { withWorkspace } from "../db/pool";
 import type { AuditEvent, WorkspaceContext } from "../contracts";
 import { redactSecrets } from "./redact";
 
+// Durable jobs run as the platform rather than as a human user. Their context
+// uses this sentinel UUID for permission checks, but audit_logs.actor_user_id
+// is a foreign key to users and must therefore store NULL for system actions.
+const SYSTEM_ACTOR_ID = "00000000-0000-4000-8000-000000000000";
+
 export async function writeAudit(
   context: WorkspaceContext,
   event: Pick<AuditEvent, "action" | "targetType" | "targetId" | "metadata">,
@@ -17,7 +22,7 @@ export async function writeAudit(
        VALUES ($1, $2, $3, $4, $5, $6::jsonb)`,
       [
         context.workspaceId,
-        context.userId,
+        context.userId === SYSTEM_ACTOR_ID ? null : context.userId,
         event.action,
         event.targetType,
         event.targetId,
