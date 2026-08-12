@@ -61,9 +61,10 @@ export const Route = createFileRoute("/api/v1/sync")({
 
         try {
           const { startSync } = await import("@/platform/sync/run");
-          const handle = await startSync(guard.context);
-          handle.completion.catch(() => undefined);
-          return jsonResponse({ ok: true, jobId: handle.jobId, state: "running" }, 202);
+          const { jobId } = await startSync(guard.context);
+          // 202: accepted, not finished. The work continues in the durable
+          // queue and survives this request, this process and the next deploy.
+          return jsonResponse({ ok: true, jobId, state: "queued" }, 202);
         } catch (error) {
           return handleRouteError(error);
         }

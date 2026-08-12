@@ -21,22 +21,32 @@ PostgreSQL.
 
 ---
 
-## Phase 2 — Durable orchestration
+## Phase 2 — Durable orchestration ✅ delivered
 
-**Why now:** jobs are in-process. They do not survive a restart mid-run and do
-not distribute, so the product is limited to a single replica. That is the
-first thing that breaks under real customer load.
+Jobs now live in PostgreSQL rather than in memory, so they survive a restart and
+any replica can claim them.
 
-- Temporal workers, with each Odoo and AI call as a retryable activity carrying
-  an idempotency key.
-- Scheduled incremental sync per plan tier, with composite `(write_date, id)`
-  watermarks persisted between runs rather than a full re-read.
-- Tombstone handling: an Odoo record that is deleted, unposted, or that stops
-  matching an approved domain must disappear from the canonical layer.
-- Nightly full reconciliation to catch drift the incremental path missed.
+- `job_queue` with lease-based claiming (`FOR UPDATE SKIP LOCKED`). A worker
+  that dies lets its lease expire and another resumes from the checkpoint,
+  rather than stranding the job behind a lock.
+- Exponential backoff and an attempt budget; the checkpoint survives a retry so
+  completed work is never repeated.
+- Composite `(write_date, id)` watermarks with a 60-second overlap re-read,
+  because Odoo writes many rows per second and second-precision `write_date`
+  puts boundary rows on either side depending on commit order.
+- Tombstones: records that vanished from Odoo are recorded and removed, so an
+  incremental sync can subtract and not only add.
+- Per-workspace schedules, with a partial unique index that makes a schedule
+  firing during a manual run a no-op rather than a duplicate scan.
 
-**Exit:** killing a worker mid-sync resumes with no duplicate or missing rows;
-two replicas can run without contending.
+**Chose PostgreSQL over Temporal.** Temporal is the better answer once workflow
+versioning, signals and long timers matter, but it is a stateful cluster to
+operate and everything needed today is a durable queue with checkpoints. The
+handler interface is unchanged, so swapping it later is an adapter.
+
+**Still open:** a nightly full reconciliation pass, and running the worker as a
+separate process (it currently runs inside the web process, which is correct at
+this size but will want splitting under load).
 
 ---
 

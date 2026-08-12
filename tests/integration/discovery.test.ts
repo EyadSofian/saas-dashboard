@@ -4,7 +4,6 @@ import { discoverSchema } from "@/platform/discovery/discover";
 import { SafeOdooConnector } from "@/platform/odoo/connector";
 import { DISCOVERY_ALLOWLIST } from "@/platform/odoo/allowlist";
 import { contentHash } from "@/platform/contracts";
-import { InProcessJobRunner } from "@/platform/jobs";
 import { createMockOdoo, DEFAULT_MODELS, MOCK_CREDENTIALS } from "../fixtures/mock-odoo";
 
 function connect(mockOptions = {}) {
@@ -233,77 +232,5 @@ describe("resumability", () => {
       },
     });
     expect(mock.calls.filter((c) => c.modelMethod === "fields_get")).toHaveLength(0);
-  });
-});
-
-describe("job runner integration", () => {
-  it("serializes runs per workspace and reports status", async () => {
-    const runner = new InProcessJobRunner();
-    const order: string[] = [];
-
-    const a = await runner.enqueue({
-      workspaceId: "ws-1",
-      kind: "discovery",
-      run: async () => {
-        order.push("a:start");
-        await new Promise((r) => setTimeout(r, 20));
-        order.push("a:end");
-      },
-    });
-    const b = await runner.enqueue({
-      workspaceId: "ws-1",
-      kind: "discovery",
-      run: async () => {
-        order.push("b:start");
-        order.push("b:end");
-      },
-    });
-
-    await Promise.all([a.completion, b.completion]);
-    // b must not start before a finished.
-    expect(order).toEqual(["a:start", "a:end", "b:start", "b:end"]);
-    expect((await runner.status(a.jobId))?.state).toBe("succeeded");
-  });
-
-  it("deduplicates by idempotency key", async () => {
-    const runner = new InProcessJobRunner();
-    let runs = 0;
-    const spec = {
-      workspaceId: "ws-1",
-      kind: "discovery",
-      idempotencyKey: "snapshot-2026-08-12",
-      run: async () => {
-        runs += 1;
-      },
-    };
-    const first = await runner.enqueue(spec);
-    const second = await runner.enqueue(spec);
-    expect(second.jobId).toBe(first.jobId);
-    await first.completion;
-    expect(runs).toBe(1);
-  });
-
-  it("marks a failed job failed without blocking the next one", async () => {
-    const runner = new InProcessJobRunner();
-    const failing = await runner.enqueue({
-      workspaceId: "ws-2",
-      kind: "discovery",
-      run: async () => {
-        throw new Error("odoo exploded");
-      },
-    });
-    await expect(failing.completion).rejects.toThrow("odoo exploded");
-    expect((await runner.status(failing.jobId))?.state).toBe("failed");
-
-    let ran = false;
-    const next = await runner.enqueue({
-      workspaceId: "ws-2",
-      kind: "discovery",
-      run: async () => {
-        ran = true;
-      },
-    });
-    await next.completion;
-    expect(ran).toBe(true);
   });
 });

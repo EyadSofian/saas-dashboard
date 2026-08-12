@@ -10,8 +10,6 @@
 //     pointer flip, so a reader never sees half a sync.
 //   • A failed or implausibly small run never replaces healthy data.
 //   • Freshness advances only on success.
-import type { JobHandle } from "../jobs";
-import { getJobRunner } from "../jobs";
 import { withWorkspace } from "../db/pool";
 import { withConnector, type OdooCredentials } from "../odoo/connector";
 import { getSecretStore } from "../secrets";
@@ -122,12 +120,35 @@ export interface StartSyncOptions {
   fetchImpl?: typeof fetch;
 }
 
-export async function startSync(
-  context: WorkspaceContext,
-  options: StartSyncOptions = {},
-): Promise<JobHandle> {
+export interface JobCallbacks {
+  signal: AbortSignal;
+  checkpoint: (state: Record<string, unknown>) => Promise<void>;
+  heartbeat: () => Promise<void>;
+}
+
+/**
+ * Enqueues a sync. Returns immediately: the work runs in the durable queue, so
+ * it survives this request, this process and the next deploy.
+ */
+export async function startSync(context: WorkspaceContext): Promise<{ jobId: string }> {
   requirePermission(context, "discovery.run");
 
+  const manifest = await currentManifest(context);
+  if (!manifest || manifest.status !== "published") {
+    throw new Error("Publish an approved mapping before syncing.");
+  }
+
+  const { enqueueJob } = await import("../jobs/durable");
+  const { id } = await enqueueJob({ workspaceId: context.workspaceId, kind: "sync" });
+  return { jobId: id };
+}
+
+/** The sync itself. Called by the job worker, never directly by a request. */
+export async function runSync(
+  context: WorkspaceContext,
+  job: JobCallbacks,
+  options: StartSyncOptions = {},
+): Promise<void> {
   const manifest = await currentManifest(context);
   if (!manifest || manifest.status !== "published") {
     throw new Error("Publish an approved mapping before syncing.");
@@ -154,10 +175,9 @@ export async function startSync(
   const { connectionId, credentials } = await credentialsFor(context);
   await recordAttempt(context, "sync");
 
-  return getJobRunner().enqueue({
-    workspaceId: context.workspaceId,
-    kind: "sync",
-    run: async (ctx) => {
+  {
+    const ctx = job;
+    {
       const run = await withWorkspace(context, async (client) => {
         const { rows } = await client.query<{ id: string }>(
           `INSERT INTO sync_runs (workspace_id, connection_id, kind, status)
@@ -233,7 +253,7 @@ export async function startSync(
           targetId: generation,
           metadata: { stats, manifestVersion: manifest.version },
         });
-        return { generation, stats };
+        return;
       } catch (error) {
         // The previous generation is still the active one: the pointer was
         // never flipped, so last-good keeps serving.
@@ -256,8 +276,8 @@ export async function startSync(
         });
         throw error;
       }
-    },
-  });
+    }
+  }
 }
 
 /**

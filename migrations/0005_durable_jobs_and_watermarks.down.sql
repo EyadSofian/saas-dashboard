@@ -1,0 +1,5 @@
+-- 0005 · down
+DROP TABLE IF EXISTS workspace_schedules CASCADE;
+DROP TABLE IF EXISTS sync_tombstones CASCADE;
+DROP TABLE IF EXISTS sync_watermarks CASCADE;
+DROP TABLE IF EXISTS job_queue CASCADE;

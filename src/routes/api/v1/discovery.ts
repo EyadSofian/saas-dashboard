@@ -57,11 +57,10 @@ export const Route = createFileRoute("/api/v1/discovery")({
 
         try {
           const { startDiscovery } = await import("@/platform/discovery/run");
-          const handle = await startDiscovery(guard.context);
-          // The job records its own failures; this only stops an unhandled
-          // rejection from taking the process down.
-          handle.completion.catch(() => undefined);
-          return jsonResponse({ ok: true, jobId: handle.jobId, state: "running" }, 202);
+          const { jobId } = await startDiscovery(guard.context);
+          // 202: accepted, not finished. The work continues in the durable
+          // queue and survives this request, this process and the next deploy.
+          return jsonResponse({ ok: true, jobId, state: "queued" }, 202);
         } catch (error) {
           return handleRouteError(error);
         }

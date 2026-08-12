@@ -3,7 +3,6 @@
 // Last-good behaviour (milestone acceptance F): a failed discovery leaves the
 // previous ready snapshot exactly as it was. Nothing is deleted before the new
 // snapshot is complete, and the failure is recorded separately in data health.
-import { getJobRunner, type JobHandle } from "../jobs";
 import { getSecretStore } from "../secrets";
 import { withConnector } from "../odoo/connector";
 import { DISCOVERY_ALLOWLIST, RELATION_FOLLOW_ALLOWLIST } from "../odoo/allowlist";
@@ -110,16 +109,38 @@ export interface StartDiscoveryOptions {
   models?: readonly string[];
 }
 
+export interface JobCallbacks {
+  signal: AbortSignal;
+  checkpoint: (state: Record<string, unknown>) => Promise<void>;
+  heartbeat: () => Promise<void>;
+}
+
+/**
+ * Enqueues a discovery scan. Returns immediately: a full scan targets under ten
+ * minutes, far too long to hold a request open, and the durable queue means it
+ * survives a restart mid-scan.
+ */
+export async function startDiscovery(context: WorkspaceContext): Promise<{ jobId: string }> {
+  requirePermission(context, "discovery.run");
+  // Fails here, in the request, if there is no usable connection — so the
+  // customer sees the problem immediately instead of in a job that failed.
+  await credentialsFor(context);
+
+  const { enqueueJob } = await import("../jobs/durable");
+  const { id } = await enqueueJob({ workspaceId: context.workspaceId, kind: "discovery" });
+  return { jobId: id };
+}
+
 /**
  * Enqueues a discovery run. Returns immediately with a job handle — a full scan
  * targets under 10 minutes, which is far too long for a request.
  */
-export async function startDiscovery(
+/** The scan itself. Called by the job worker, never directly by a request. */
+export async function runDiscovery(
   context: WorkspaceContext,
+  job: JobCallbacks,
   options: StartDiscoveryOptions = {},
-): Promise<JobHandle> {
-  requirePermission(context, "discovery.run");
-
+): Promise<void> {
   const { connection, credentials } = await credentialsFor(context);
   await setOnboardingState(context, "discovering");
   await recordAttempt(context, DOMAIN);
@@ -133,10 +154,9 @@ export async function startDiscovery(
   const run = await openRun(context, connection.id);
   const resumeFrom = await resumePoint(context);
 
-  return getJobRunner().enqueue({
-    workspaceId: context.workspaceId,
-    kind: "discovery",
-    run: async (ctx) => {
+  {
+    const ctx = job;
+    {
       try {
         const result = await withConnector(
           credentials,
@@ -151,7 +171,8 @@ export async function startDiscovery(
               ctx: {
                 signal: ctx.signal,
                 resumeFrom,
-                checkpoint: (state) => persistCheckpoint(context, run.id, state),
+                checkpoint: (state: Record<string, unknown>) =>
+                  persistCheckpoint(context, run.id, state),
               },
             }),
         );
@@ -179,7 +200,7 @@ export async function startDiscovery(
             permissionGaps: snapshot.permissionGaps.length,
           },
         });
-        return snapshot;
+        return;
       } catch (error) {
         // Nothing was deleted, so the previous ready snapshot is still the one
         // the UI serves. The failure is recorded beside it, not in place of it.
@@ -194,6 +215,6 @@ export async function startDiscovery(
         });
         throw error;
       }
-    },
-  });
+    }
+  }
 }
