@@ -188,7 +188,9 @@ describe("migrateDown", () => {
     expect(await migrateDown()).toBe("0002_legacy_workspace_backfill");
 
     expect(await columnExists("dashboard_rows", "workspace_id")).toBe(false);
-    const { rows } = await pool.query("SELECT row_data FROM dashboard_rows WHERE stable_key='lead-1'");
+    const { rows } = await pool.query(
+      "SELECT row_data FROM dashboard_rows WHERE stable_key='lead-1'",
+    );
     // The legacy row survives the rollback — this is the property that makes
     // the expand step safe to deploy.
     expect(rows).toHaveLength(1);

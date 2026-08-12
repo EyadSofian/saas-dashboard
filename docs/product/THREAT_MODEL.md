@@ -52,8 +52,11 @@ carrying stale context, a shared cache key, or a background job.
 from membership, never from the client (INV-5); workspace-scoped cache and job
 keys (INV-6).
 
-**Proof.** `tests/security/workspace-isolation.test.ts` — 7 surfaces plus
-pool-reuse and missing-context cases.
+**Proof.** `tests/security/workspace-isolation.test.ts` (23 tests, real
+PostgreSQL) — nine query shapes including a filterless select and a
+cross-workspace `INSERT`, plus pool-reuse, interleaving and missing-context
+cases. Cache, export and AI-tool surfaces are untested because they do not yet
+exist; see `TENANCY_INVARIANTS.md` INV-9 for when each gains coverage.
 
 **Residual.** A future raw query written outside the repository layer could omit
 context. Mitigated by RLS being the *second* layer: even a filterless query

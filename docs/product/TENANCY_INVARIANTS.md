@@ -106,11 +106,23 @@ Phase 3.)*
 
 ### INV-9 — Isolation is proven by tests, not asserted
 
-`tests/security/workspace-isolation.test.ts` proves Workspace A cannot reach
-Workspace B through: the HTTP API, the repository layer, raw SQL on the runtime
-role, the cache, an export, a background job, and an AI tool surface. It also
-proves connection-pool reuse leaks nothing and that missing context returns
-zero rows.
+`tests/security/workspace-isolation.test.ts` runs against a **real PostgreSQL**
+and proves Workspace A cannot reach Workspace B through: a repository-style
+select, raw SQL with the filter omitted, an explicit cross-workspace `WHERE`, a
+join, a subquery, an aggregate, `UPDATE`, `DELETE`, and `INSERT` claiming
+another workspace's id. It also proves that the runtime role is `NOBYPASSRLS`,
+that RLS is enabled and forced on all 15 workspace-owned tables, that pooled
+connections retain no prior context, that interleaved workspaces do not bleed,
+and that missing context returns zero rows.
+
+The API surface is covered by the route guard, which resolves the workspace from
+membership and returns 403 for a non-member (`src/platform/api/guard.ts`).
+
+**Not yet covered, because the surfaces do not exist in this milestone:**
+workspace-scoped cache keys, export files, and AI tool calls. Each is required
+by INV-6 and must gain its own isolation test in the phase that introduces it —
+Phase 3 for cache and jobs, Phase 6 for AI tools. Stating this here is
+deliberate: an invariant nobody tests is a comment, not a control.
 
 This suite is required to pass before any release.
 
