@@ -24,9 +24,11 @@ import { Route as ApiV1DiscoveryRouteImport } from './routes/api/v1/discovery'
 import { Route as ApiV1MappingRouteImport } from './routes/api/v1/mapping'
 import { Route as ApiV1SchemaSnapshotsRouteImport } from './routes/api/v1/schema-snapshots'
 import { Route as ApiV1SessionRouteImport } from './routes/api/v1/session'
+import { Route as ApiV1SyncRouteImport } from './routes/api/v1/sync'
 import { Route as ApiV1WorkspacesRouteImport } from './routes/api/v1/workspaces'
 import { Route as ApiV1ConnectionsOdooRouteImport } from './routes/api/v1/connections.odoo'
 import { Route as ApiV1MappingPublishRouteImport } from './routes/api/v1/mapping.publish'
+import { Route as ApiV1MetricsQueryRouteImport } from './routes/api/v1/metrics.query'
 import { Route as ApiV1ConnectionsOdooTestConnectionRouteImport } from './routes/api/v1/connections.odoo.test-connection'
 
 const IndexRoute = IndexRouteImport.update({
@@ -104,6 +106,11 @@ const ApiV1SessionRoute = ApiV1SessionRouteImport.update({
   path: '/api/v1/session',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiV1SyncRoute = ApiV1SyncRouteImport.update({
+  id: '/api/v1/sync',
+  path: '/api/v1/sync',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiV1WorkspacesRoute = ApiV1WorkspacesRouteImport.update({
   id: '/api/v1/workspaces',
   path: '/api/v1/workspaces',
@@ -118,6 +125,11 @@ const ApiV1MappingPublishRoute = ApiV1MappingPublishRouteImport.update({
   id: '/publish',
   path: '/publish',
   getParentRoute: () => ApiV1MappingRoute,
+} as any)
+const ApiV1MetricsQueryRoute = ApiV1MetricsQueryRouteImport.update({
+  id: '/api/v1/metrics/query',
+  path: '/api/v1/metrics/query',
+  getParentRoute: () => rootRouteImport,
 } as any)
 const ApiV1ConnectionsOdooTestConnectionRoute =
   ApiV1ConnectionsOdooTestConnectionRouteImport.update({
@@ -142,9 +154,11 @@ export interface FileRoutesByFullPath {
   '/api/v1/mapping': typeof ApiV1MappingRouteWithChildren
   '/api/v1/schema-snapshots': typeof ApiV1SchemaSnapshotsRoute
   '/api/v1/session': typeof ApiV1SessionRoute
+  '/api/v1/sync': typeof ApiV1SyncRoute
   '/api/v1/workspaces': typeof ApiV1WorkspacesRoute
   '/api/v1/connections/odoo': typeof ApiV1ConnectionsOdooRouteWithChildren
   '/api/v1/mapping/publish': typeof ApiV1MappingPublishRoute
+  '/api/v1/metrics/query': typeof ApiV1MetricsQueryRoute
   '/api/v1/connections/odoo/test-connection': typeof ApiV1ConnectionsOdooTestConnectionRoute
 }
 export interface FileRoutesByTo {
@@ -163,9 +177,11 @@ export interface FileRoutesByTo {
   '/api/v1/mapping': typeof ApiV1MappingRouteWithChildren
   '/api/v1/schema-snapshots': typeof ApiV1SchemaSnapshotsRoute
   '/api/v1/session': typeof ApiV1SessionRoute
+  '/api/v1/sync': typeof ApiV1SyncRoute
   '/api/v1/workspaces': typeof ApiV1WorkspacesRoute
   '/api/v1/connections/odoo': typeof ApiV1ConnectionsOdooRouteWithChildren
   '/api/v1/mapping/publish': typeof ApiV1MappingPublishRoute
+  '/api/v1/metrics/query': typeof ApiV1MetricsQueryRoute
   '/api/v1/connections/odoo/test-connection': typeof ApiV1ConnectionsOdooTestConnectionRoute
 }
 export interface FileRoutesById {
@@ -185,9 +201,11 @@ export interface FileRoutesById {
   '/api/v1/mapping': typeof ApiV1MappingRouteWithChildren
   '/api/v1/schema-snapshots': typeof ApiV1SchemaSnapshotsRoute
   '/api/v1/session': typeof ApiV1SessionRoute
+  '/api/v1/sync': typeof ApiV1SyncRoute
   '/api/v1/workspaces': typeof ApiV1WorkspacesRoute
   '/api/v1/connections/odoo': typeof ApiV1ConnectionsOdooRouteWithChildren
   '/api/v1/mapping/publish': typeof ApiV1MappingPublishRoute
+  '/api/v1/metrics/query': typeof ApiV1MetricsQueryRoute
   '/api/v1/connections/odoo/test-connection': typeof ApiV1ConnectionsOdooTestConnectionRoute
 }
 export interface FileRouteTypes {
@@ -208,9 +226,11 @@ export interface FileRouteTypes {
     | '/api/v1/mapping'
     | '/api/v1/schema-snapshots'
     | '/api/v1/session'
+    | '/api/v1/sync'
     | '/api/v1/workspaces'
     | '/api/v1/connections/odoo'
     | '/api/v1/mapping/publish'
+    | '/api/v1/metrics/query'
     | '/api/v1/connections/odoo/test-connection'
   fileRoutesByTo: FileRoutesByTo
   to:
@@ -229,9 +249,11 @@ export interface FileRouteTypes {
     | '/api/v1/mapping'
     | '/api/v1/schema-snapshots'
     | '/api/v1/session'
+    | '/api/v1/sync'
     | '/api/v1/workspaces'
     | '/api/v1/connections/odoo'
     | '/api/v1/mapping/publish'
+    | '/api/v1/metrics/query'
     | '/api/v1/connections/odoo/test-connection'
   id:
     | '__root__'
@@ -250,9 +272,11 @@ export interface FileRouteTypes {
     | '/api/v1/mapping'
     | '/api/v1/schema-snapshots'
     | '/api/v1/session'
+    | '/api/v1/sync'
     | '/api/v1/workspaces'
     | '/api/v1/connections/odoo'
     | '/api/v1/mapping/publish'
+    | '/api/v1/metrics/query'
     | '/api/v1/connections/odoo/test-connection'
   fileRoutesById: FileRoutesById
 }
@@ -272,8 +296,10 @@ export interface RootRouteChildren {
   ApiV1MappingRoute: typeof ApiV1MappingRouteWithChildren
   ApiV1SchemaSnapshotsRoute: typeof ApiV1SchemaSnapshotsRoute
   ApiV1SessionRoute: typeof ApiV1SessionRoute
+  ApiV1SyncRoute: typeof ApiV1SyncRoute
   ApiV1WorkspacesRoute: typeof ApiV1WorkspacesRoute
   ApiV1ConnectionsOdooRoute: typeof ApiV1ConnectionsOdooRouteWithChildren
+  ApiV1MetricsQueryRoute: typeof ApiV1MetricsQueryRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -383,6 +409,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiV1SessionRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/v1/sync': {
+      id: '/api/v1/sync'
+      path: '/api/v1/sync'
+      fullPath: '/api/v1/sync'
+      preLoaderRoute: typeof ApiV1SyncRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/v1/workspaces': {
       id: '/api/v1/workspaces'
       path: '/api/v1/workspaces'
@@ -403,6 +436,13 @@ declare module '@tanstack/react-router' {
       fullPath: '/api/v1/mapping/publish'
       preLoaderRoute: typeof ApiV1MappingPublishRouteImport
       parentRoute: typeof ApiV1MappingRoute
+    }
+    '/api/v1/metrics/query': {
+      id: '/api/v1/metrics/query'
+      path: '/api/v1/metrics/query'
+      fullPath: '/api/v1/metrics/query'
+      preLoaderRoute: typeof ApiV1MetricsQueryRouteImport
+      parentRoute: typeof rootRouteImport
     }
     '/api/v1/connections/odoo/test-connection': {
       id: '/api/v1/connections/odoo/test-connection'
@@ -454,8 +494,10 @@ const rootRouteChildren: RootRouteChildren = {
   ApiV1MappingRoute: ApiV1MappingRouteWithChildren,
   ApiV1SchemaSnapshotsRoute: ApiV1SchemaSnapshotsRoute,
   ApiV1SessionRoute: ApiV1SessionRoute,
+  ApiV1SyncRoute: ApiV1SyncRoute,
   ApiV1WorkspacesRoute: ApiV1WorkspacesRoute,
   ApiV1ConnectionsOdooRoute: ApiV1ConnectionsOdooRouteWithChildren,
+  ApiV1MetricsQueryRoute: ApiV1MetricsQueryRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
