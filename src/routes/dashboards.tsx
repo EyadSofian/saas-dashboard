@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { BarChart3, Info, Loader2, RefreshCw } from "lucide-react";
+import { BarChart3, Info, Loader2, PencilLine, RefreshCw, Undo2 } from "lucide-react";
 import { DASH, formatCurrency, formatNumber, useI18n } from "@/lib/i18n";
 import { can, useSession, workspaceFetch } from "@/lib/session";
 import {
@@ -17,7 +17,8 @@ import {
   Td,
   Th,
 } from "@/components/ui/primitives";
-import { DASHBOARD_TEMPLATES, type Widget } from "@/platform/dashboards/templates";
+import type { DashboardDefinition, Widget } from "@/platform/dashboards/templates";
+import { Builder, type BuilderIssue, type MetricOption } from "@/components/dashboards/Builder";
 import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/dashboards")({ component: DashboardsPage });
@@ -60,7 +61,21 @@ function DashboardsPage() {
   const { workspace } = useSession();
   const workspaceId = workspace?.id ?? null;
 
-  const [templateKey, setTemplateKey] = useState(DASHBOARD_TEMPLATES[0].key);
+  const [dashboards, setDashboards] = useState<
+    Array<{
+      key: string;
+      title: { ar: string; en: string };
+      status: string;
+      version: number;
+      definition: DashboardDefinition;
+    }>
+  >([]);
+  const [metrics, setMetrics] = useState<MetricOption[]>([]);
+  const [selectedKey, setSelectedKey] = useState<string>("");
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState<DashboardDefinition>({ version: 1, widgets: [] });
+  const [issues, setIssues] = useState<BuilderIssue[]>([]);
+  const [saving, setSaving] = useState(false);
   const [preset, setPreset] = useState("year");
   const [values, setValues] = useState<MetricValue[]>([]);
   const [loading, setLoading] = useState(true);
@@ -69,12 +84,12 @@ function DashboardsPage() {
   const [syncFailed, setSyncFailed] = useState(false);
 
   const template = useMemo(
-    () => DASHBOARD_TEMPLATES.find((d) => d.key === templateKey) ?? DASHBOARD_TEMPLATES[0],
-    [templateKey],
+    () => dashboards.find((d) => d.key === selectedKey) ?? dashboards[0] ?? null,
+    [dashboards, selectedKey],
   );
 
   const metricKeys = useMemo(
-    () => [...new Set(template.definition.widgets.flatMap((w) => w.metricKeys))],
+    () => [...new Set((template?.definition.widgets ?? []).flatMap((w) => w.metricKeys))],
     [template],
   );
 
@@ -85,14 +100,29 @@ function DashboardsPage() {
     }
     setLoading(true);
     try {
-      const [metricsRes, syncRes] = await Promise.all([
-        workspaceFetch(workspaceId, "/api/v1/metrics/query", {
-          method: "POST",
-          body: JSON.stringify({ metricKeys, dateRange: presetRange(preset) }),
-        }),
+      const [dashboardsRes, syncRes] = await Promise.all([
+        workspaceFetch(workspaceId, "/api/v1/dashboards"),
         workspaceFetch(workspaceId, "/api/v1/sync"),
       ]);
-      if (metricsRes.ok) setValues((await metricsRes.json()).values ?? []);
+
+      if (dashboardsRes.ok) {
+        const body = await dashboardsRes.json();
+        setDashboards(body.dashboards ?? []);
+        setMetrics(body.metrics ?? []);
+        setSelectedKey((current) => current || (body.dashboards?.[0]?.key ?? ""));
+      }
+
+      // Metric values are fetched separately because the dashboard list decides
+      // which keys to ask for.
+      if (metricKeys.length) {
+        const metricsRes = await workspaceFetch(workspaceId, "/api/v1/metrics/query", {
+          method: "POST",
+          body: JSON.stringify({ metricKeys, dateRange: presetRange(preset) }),
+        });
+        if (metricsRes.ok) setValues((await metricsRes.json()).values ?? []);
+      } else {
+        setValues([]);
+      }
       if (syncRes.ok) {
         const body = await syncRes.json();
         setGeneration(body.generation ?? null);
@@ -118,6 +148,50 @@ function DashboardsPage() {
     }
   }
 
+  async function saveDraft(publish: boolean) {
+    if (!workspaceId || !template) return;
+    setSaving(true);
+    try {
+      const response = await workspaceFetch(workspaceId, "/api/v1/dashboards", {
+        method: "POST",
+        body: JSON.stringify({ key: template.key, definition: draft, title: template.title }),
+      });
+      const body = await response.json();
+      if (!response.ok) {
+        setIssues(body.issues ?? []);
+        return;
+      }
+      setIssues(body.issues ?? []);
+
+      if (publish) {
+        await workspaceFetch(workspaceId, "/api/v1/dashboards", {
+          method: "PATCH",
+          body: JSON.stringify({ key: template.key, action: "publish" }),
+        });
+        setEditing(false);
+      }
+      await load();
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function suggest(request: string) {
+    if (!workspaceId) return;
+    const response = await workspaceFetch(workspaceId, "/api/v1/dashboards/suggest", {
+      method: "POST",
+      body: JSON.stringify({ request }),
+    });
+    if (!response.ok) return;
+    const body = await response.json();
+    // Merged, not replaced: a suggestion adds to what is already on the board
+    // rather than discarding work the customer already did.
+    setDraft((current) => ({
+      version: 1,
+      widgets: [...current.widgets, ...(body.suggestion?.widgets ?? [])],
+    }));
+  }
+
   if (!workspace) return <Notice tone="warning">{t("workspace_none")}</Notice>;
 
   const byKey = new Map<string, MetricValue[]>();
@@ -131,35 +205,55 @@ function DashboardsPage() {
   return (
     <div className="space-y-6">
       <PageHeader
-        title={ar ? template.title.ar : template.title.en}
+        title={template ? (ar ? template.title.ar : template.title.en) : t("nav_dashboards")}
         subtitle={
           ar
             ? "كل رقم بيقدر يشرح معادلته وتاريخه ومصدره. الشرطة معناها «غير متاح» مش صفر."
             : "Every number can explain its formula, date basis and source. A dash means unavailable, not zero."
         }
         actions={
-          can(workspace, "sync.run") ? (
-            <Button size="sm" variant="secondary" onClick={runSync} disabled={syncing}>
-              {syncing ? (
-                <Loader2 className="size-4 animate-spin" />
-              ) : (
-                <RefreshCw className="size-4" />
-              )}
-              {ar ? "تحديث البيانات" : "Refresh data"}
-            </Button>
-          ) : null
+          <>
+            {template && can(workspace, "dashboard.publish") && (
+              <Button
+                size="sm"
+                variant="secondary"
+                onClick={() => {
+                  setDraft(template.definition);
+                  setIssues([]);
+                  setEditing((value) => !value);
+                }}
+              >
+                {editing ? <Undo2 className="size-4" /> : <PencilLine className="size-4" />}
+                {editing ? (ar ? "إلغاء" : "Cancel") : ar ? "تعديل" : "Edit"}
+              </Button>
+            )}
+            {can(workspace, "sync.run") && (
+              <Button size="sm" variant="secondary" onClick={runSync} disabled={syncing}>
+                {syncing ? (
+                  <Loader2 className="size-4 animate-spin" />
+                ) : (
+                  <RefreshCw className="size-4" />
+                )}
+                {ar ? "تحديث البيانات" : "Refresh data"}
+              </Button>
+            )}
+          </>
         }
       />
 
       <div className="grid gap-3 sm:grid-cols-2 lg:max-w-xl">
         <SelectField
           label={ar ? "اللوحة" : "Dashboard"}
-          value={templateKey}
-          onChange={(event) => setTemplateKey(event.target.value)}
+          value={selectedKey}
+          onChange={(event) => {
+            setSelectedKey(event.target.value);
+            setEditing(false);
+          }}
         >
-          {DASHBOARD_TEMPLATES.map((option) => (
+          {dashboards.map((option) => (
             <option key={option.key} value={option.key}>
-              {ar ? option.title.ar : option.title.en}
+              {(ar ? option.title.ar : option.title.en) +
+                (option.status === "draft" ? (ar ? " (مسودة)" : " (draft)") : "")}
             </option>
           ))}
         </SelectField>
@@ -192,7 +286,18 @@ function DashboardsPage() {
         </Notice>
       )}
 
-      {loading ? (
+      {editing ? (
+        <Builder
+          definition={draft}
+          metrics={metrics}
+          issues={issues}
+          busy={saving}
+          onChange={setDraft}
+          onSave={() => saveDraft(false)}
+          onPublish={() => saveDraft(true)}
+          onSuggest={suggest}
+        />
+      ) : loading ? (
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
           {[0, 1, 2, 3].map((index) => (
             <Skeleton key={index} className="h-24" />
@@ -200,7 +305,7 @@ function DashboardsPage() {
         </div>
       ) : (
         <div className="grid grid-cols-12 gap-4">
-          {template.definition.widgets.map((widget) => (
+          {(template?.definition.widgets ?? []).map((widget) => (
             <div
               key={widget.id}
               className={cn(

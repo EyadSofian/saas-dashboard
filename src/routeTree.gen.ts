@@ -19,6 +19,7 @@ import { Route as SignUpRouteImport } from './routes/sign-up'
 import { Route as ApiHealthRouteImport } from './routes/api/health'
 import { Route as WorkspacesNewRouteImport } from './routes/workspaces.new'
 import { Route as ApiAuthSplatRouteImport } from './routes/api/auth.$'
+import { Route as ApiV1DashboardsRouteImport } from './routes/api/v1/dashboards'
 import { Route as ApiV1DataHealthRouteImport } from './routes/api/v1/data-health'
 import { Route as ApiV1DiscoveryRouteImport } from './routes/api/v1/discovery'
 import { Route as ApiV1MappingRouteImport } from './routes/api/v1/mapping'
@@ -28,6 +29,7 @@ import { Route as ApiV1SessionRouteImport } from './routes/api/v1/session'
 import { Route as ApiV1SyncRouteImport } from './routes/api/v1/sync'
 import { Route as ApiV1WorkspacesRouteImport } from './routes/api/v1/workspaces'
 import { Route as ApiV1ConnectionsOdooRouteImport } from './routes/api/v1/connections.odoo'
+import { Route as ApiV1DashboardsSuggestRouteImport } from './routes/api/v1/dashboards.suggest'
 import { Route as ApiV1MappingPublishRouteImport } from './routes/api/v1/mapping.publish'
 import { Route as ApiV1MetricsQueryRouteImport } from './routes/api/v1/metrics.query'
 import { Route as ApiV1ConnectionsOdooTestConnectionRouteImport } from './routes/api/v1/connections.odoo.test-connection'
@@ -82,6 +84,11 @@ const ApiAuthSplatRoute = ApiAuthSplatRouteImport.update({
   path: '/api/auth/$',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiV1DashboardsRoute = ApiV1DashboardsRouteImport.update({
+  id: '/api/v1/dashboards',
+  path: '/api/v1/dashboards',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiV1DataHealthRoute = ApiV1DataHealthRouteImport.update({
   id: '/api/v1/data-health',
   path: '/api/v1/data-health',
@@ -127,6 +134,11 @@ const ApiV1ConnectionsOdooRoute = ApiV1ConnectionsOdooRouteImport.update({
   path: '/api/v1/connections/odoo',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiV1DashboardsSuggestRoute = ApiV1DashboardsSuggestRouteImport.update({
+  id: '/suggest',
+  path: '/suggest',
+  getParentRoute: () => ApiV1DashboardsRoute,
+} as any)
 const ApiV1MappingPublishRoute = ApiV1MappingPublishRouteImport.update({
   id: '/publish',
   path: '/publish',
@@ -155,6 +167,7 @@ export interface FileRoutesByFullPath {
   '/api/health': typeof ApiHealthRoute
   '/workspaces/new': typeof WorkspacesNewRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
+  '/api/v1/dashboards': typeof ApiV1DashboardsRouteWithChildren
   '/api/v1/data-health': typeof ApiV1DataHealthRoute
   '/api/v1/discovery': typeof ApiV1DiscoveryRoute
   '/api/v1/mapping': typeof ApiV1MappingRouteWithChildren
@@ -164,6 +177,7 @@ export interface FileRoutesByFullPath {
   '/api/v1/sync': typeof ApiV1SyncRoute
   '/api/v1/workspaces': typeof ApiV1WorkspacesRoute
   '/api/v1/connections/odoo': typeof ApiV1ConnectionsOdooRouteWithChildren
+  '/api/v1/dashboards/suggest': typeof ApiV1DashboardsSuggestRoute
   '/api/v1/mapping/publish': typeof ApiV1MappingPublishRoute
   '/api/v1/metrics/query': typeof ApiV1MetricsQueryRoute
   '/api/v1/connections/odoo/test-connection': typeof ApiV1ConnectionsOdooTestConnectionRoute
@@ -179,6 +193,7 @@ export interface FileRoutesByTo {
   '/api/health': typeof ApiHealthRoute
   '/workspaces/new': typeof WorkspacesNewRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
+  '/api/v1/dashboards': typeof ApiV1DashboardsRouteWithChildren
   '/api/v1/data-health': typeof ApiV1DataHealthRoute
   '/api/v1/discovery': typeof ApiV1DiscoveryRoute
   '/api/v1/mapping': typeof ApiV1MappingRouteWithChildren
@@ -188,6 +203,7 @@ export interface FileRoutesByTo {
   '/api/v1/sync': typeof ApiV1SyncRoute
   '/api/v1/workspaces': typeof ApiV1WorkspacesRoute
   '/api/v1/connections/odoo': typeof ApiV1ConnectionsOdooRouteWithChildren
+  '/api/v1/dashboards/suggest': typeof ApiV1DashboardsSuggestRoute
   '/api/v1/mapping/publish': typeof ApiV1MappingPublishRoute
   '/api/v1/metrics/query': typeof ApiV1MetricsQueryRoute
   '/api/v1/connections/odoo/test-connection': typeof ApiV1ConnectionsOdooTestConnectionRoute
@@ -204,6 +220,7 @@ export interface FileRoutesById {
   '/api/health': typeof ApiHealthRoute
   '/workspaces/new': typeof WorkspacesNewRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
+  '/api/v1/dashboards': typeof ApiV1DashboardsRouteWithChildren
   '/api/v1/data-health': typeof ApiV1DataHealthRoute
   '/api/v1/discovery': typeof ApiV1DiscoveryRoute
   '/api/v1/mapping': typeof ApiV1MappingRouteWithChildren
@@ -213,6 +230,7 @@ export interface FileRoutesById {
   '/api/v1/sync': typeof ApiV1SyncRoute
   '/api/v1/workspaces': typeof ApiV1WorkspacesRoute
   '/api/v1/connections/odoo': typeof ApiV1ConnectionsOdooRouteWithChildren
+  '/api/v1/dashboards/suggest': typeof ApiV1DashboardsSuggestRoute
   '/api/v1/mapping/publish': typeof ApiV1MappingPublishRoute
   '/api/v1/metrics/query': typeof ApiV1MetricsQueryRoute
   '/api/v1/connections/odoo/test-connection': typeof ApiV1ConnectionsOdooTestConnectionRoute
@@ -230,6 +248,7 @@ export interface FileRouteTypes {
     | '/api/health'
     | '/workspaces/new'
     | '/api/auth/$'
+    | '/api/v1/dashboards'
     | '/api/v1/data-health'
     | '/api/v1/discovery'
     | '/api/v1/mapping'
@@ -239,6 +258,7 @@ export interface FileRouteTypes {
     | '/api/v1/sync'
     | '/api/v1/workspaces'
     | '/api/v1/connections/odoo'
+    | '/api/v1/dashboards/suggest'
     | '/api/v1/mapping/publish'
     | '/api/v1/metrics/query'
     | '/api/v1/connections/odoo/test-connection'
@@ -254,6 +274,7 @@ export interface FileRouteTypes {
     | '/api/health'
     | '/workspaces/new'
     | '/api/auth/$'
+    | '/api/v1/dashboards'
     | '/api/v1/data-health'
     | '/api/v1/discovery'
     | '/api/v1/mapping'
@@ -263,6 +284,7 @@ export interface FileRouteTypes {
     | '/api/v1/sync'
     | '/api/v1/workspaces'
     | '/api/v1/connections/odoo'
+    | '/api/v1/dashboards/suggest'
     | '/api/v1/mapping/publish'
     | '/api/v1/metrics/query'
     | '/api/v1/connections/odoo/test-connection'
@@ -278,6 +300,7 @@ export interface FileRouteTypes {
     | '/api/health'
     | '/workspaces/new'
     | '/api/auth/$'
+    | '/api/v1/dashboards'
     | '/api/v1/data-health'
     | '/api/v1/discovery'
     | '/api/v1/mapping'
@@ -287,6 +310,7 @@ export interface FileRouteTypes {
     | '/api/v1/sync'
     | '/api/v1/workspaces'
     | '/api/v1/connections/odoo'
+    | '/api/v1/dashboards/suggest'
     | '/api/v1/mapping/publish'
     | '/api/v1/metrics/query'
     | '/api/v1/connections/odoo/test-connection'
@@ -303,6 +327,7 @@ export interface RootRouteChildren {
   ApiHealthRoute: typeof ApiHealthRoute
   WorkspacesNewRoute: typeof WorkspacesNewRoute
   ApiAuthSplatRoute: typeof ApiAuthSplatRoute
+  ApiV1DashboardsRoute: typeof ApiV1DashboardsRouteWithChildren
   ApiV1DataHealthRoute: typeof ApiV1DataHealthRoute
   ApiV1DiscoveryRoute: typeof ApiV1DiscoveryRoute
   ApiV1MappingRoute: typeof ApiV1MappingRouteWithChildren
@@ -387,6 +412,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiAuthSplatRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/v1/dashboards': {
+      id: '/api/v1/dashboards'
+      path: '/api/v1/dashboards'
+      fullPath: '/api/v1/dashboards'
+      preLoaderRoute: typeof ApiV1DashboardsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/v1/data-health': {
       id: '/api/v1/data-health'
       path: '/api/v1/data-health'
@@ -450,6 +482,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiV1ConnectionsOdooRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/v1/dashboards/suggest': {
+      id: '/api/v1/dashboards/suggest'
+      path: '/suggest'
+      fullPath: '/api/v1/dashboards/suggest'
+      preLoaderRoute: typeof ApiV1DashboardsSuggestRouteImport
+      parentRoute: typeof ApiV1DashboardsRoute
+    }
     '/api/v1/mapping/publish': {
       id: '/api/v1/mapping/publish'
       path: '/publish'
@@ -473,6 +512,18 @@ declare module '@tanstack/react-router' {
     }
   }
 }
+
+interface ApiV1DashboardsRouteChildren {
+  ApiV1DashboardsSuggestRoute: typeof ApiV1DashboardsSuggestRoute
+}
+
+const ApiV1DashboardsRouteChildren: ApiV1DashboardsRouteChildren = {
+  ApiV1DashboardsSuggestRoute: ApiV1DashboardsSuggestRoute,
+}
+
+const ApiV1DashboardsRouteWithChildren = ApiV1DashboardsRoute._addFileChildren(
+  ApiV1DashboardsRouteChildren,
+)
 
 interface ApiV1MappingRouteChildren {
   ApiV1MappingPublishRoute: typeof ApiV1MappingPublishRoute
@@ -509,6 +560,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiHealthRoute: ApiHealthRoute,
   WorkspacesNewRoute: WorkspacesNewRoute,
   ApiAuthSplatRoute: ApiAuthSplatRoute,
+  ApiV1DashboardsRoute: ApiV1DashboardsRouteWithChildren,
   ApiV1DataHealthRoute: ApiV1DataHealthRoute,
   ApiV1DiscoveryRoute: ApiV1DiscoveryRoute,
   ApiV1MappingRoute: ApiV1MappingRouteWithChildren,

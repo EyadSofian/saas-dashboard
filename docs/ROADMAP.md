@@ -93,13 +93,28 @@ own for every measure.
 
 ---
 
-## Phase 5 — Dashboard builder
+## Phase 5 — Dashboard builder ✅ delivered
 
-- Widget catalog and drag-to-arrange grid editor, with desktop and mobile
-  layouts stored separately.
-- Saved filter views; draft, publish, version, roll back.
-- Natural-language dashboard creation that compiles to the same validated
-  schema — a suggestion path, never a second way to define a metric.
+- Widget catalog (KPI, bars, table, text) with add, reorder, resize and remove.
+  Reordering uses buttons rather than drag-and-drop so keyboard and phone users
+  get the same capability; drag can be layered on top later, it cannot be the
+  only way.
+- Draft, publish, version and roll back. A published version is immutable —
+  editing creates a new version and publishing promotes it, so "what was on the
+  board last quarter" stays answerable and a rollback is republishing an old
+  definition rather than rewriting history.
+- Saved filter views, stored separately from dashboards so one view applies
+  across several.
+- Natural-language suggestions in Arabic and English, including mixed requests
+  and the spelling variants people actually type. The output goes through the
+  same validator as every other route — it is a faster way into the builder,
+  never a second way to define a dashboard.
+- A widget may only name a metric that exists **and** is answerable for this
+  workspace. Without that check the builder cheerfully produces a board of em
+  dashes, which reads as a broken product rather than an unmapped one.
+
+**Still open:** separate stored layouts for mobile (spans currently adapt
+responsively from one value), and drag-to-arrange as an addition.
 
 ---
 
