@@ -233,4 +233,21 @@ describe("resumability", () => {
     });
     expect(mock.calls.filter((c) => c.modelMethod === "fields_get")).toHaveLength(0);
   });
+
+  it("extends the durable-job lease after every discovered model", async () => {
+    let heartbeats = 0;
+    await discoverSchema(connect().connector, {
+      models: ["crm.lead", "crm.stage", "sale.order"],
+      followRelations: false,
+      ctx: {
+        signal: new AbortController().signal,
+        resumeFrom: {},
+        checkpoint: async () => {},
+        heartbeat: async () => {
+          heartbeats += 1;
+        },
+      },
+    });
+    expect(heartbeats).toBe(3);
+  });
 });

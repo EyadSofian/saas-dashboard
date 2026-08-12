@@ -20,11 +20,18 @@ export const Route = createFileRoute("/api/v1/sync")({
             listHealth(guard.context),
           ]);
 
-          const { runs, generation } = await withWorkspace(guard.context, async (client) => {
+          const { runs, jobs, generation } = await withWorkspace(guard.context, async (client) => {
             const runsResult = await client.query(
               `SELECT id, status, error, stats, started_at, finished_at
                  FROM sync_runs WHERE workspace_id = $1 AND kind = 'sync'
                 ORDER BY started_at DESC LIMIT 5`,
+              [guard.context.workspaceId],
+            );
+            const jobsResult = await client.query(
+              `SELECT id, status, error, attempts, max_attempts, created_at, started_at, finished_at
+                 FROM job_queue
+                WHERE workspace_id = $1 AND kind = 'sync'
+                ORDER BY created_at DESC LIMIT 5`,
               [guard.context.workspaceId],
             );
             const generationResult = generationId
@@ -34,7 +41,11 @@ export const Route = createFileRoute("/api/v1/sync")({
                   [guard.context.workspaceId, generationId],
                 )
               : { rows: [] };
-            return { runs: runsResult.rows, generation: generationResult.rows[0] ?? null };
+            return {
+              runs: runsResult.rows,
+              jobs: jobsResult.rows,
+              generation: generationResult.rows[0] ?? null,
+            };
           });
 
           return jsonResponse({
@@ -44,6 +55,8 @@ export const Route = createFileRoute("/api/v1/sync")({
             generation,
             latestRun: runs[0] ?? null,
             recentRuns: runs,
+            latestJob: jobs[0] ?? null,
+            recentJobs: jobs,
             health: health.find((h) => h.domain === "sync") ?? null,
           });
         } catch (error) {

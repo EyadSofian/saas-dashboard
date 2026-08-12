@@ -76,9 +76,11 @@ function DataHealthPage() {
   const [note, setNote] = useState("");
   const [busy, setBusy] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     if (!workspace) return;
+    setError(null);
     try {
       const [healthRes, reconciliationRes] = await Promise.all([
         workspaceFetch(workspace.id, "/api/v1/data-health"),
@@ -86,10 +88,17 @@ function DataHealthPage() {
       ]);
       if (healthRes.ok) setDomains((await healthRes.json()).domains ?? []);
       if (reconciliationRes.ok) setRun((await reconciliationRes.json()).run ?? null);
+      if (!healthRes.ok || !reconciliationRes.ok) {
+        setError(
+          ar ? "تعذر تحميل كل تفاصيل صحة البيانات." : "Could not load every data-health detail.",
+        );
+      }
+    } catch {
+      setError(ar ? "تعذر الاتصال بالخادم." : "Could not reach the server.");
     } finally {
       setLoading(false);
     }
-  }, [workspace]);
+  }, [workspace, ar]);
 
   async function acceptWarnings() {
     if (!workspace || !run) return;
@@ -126,6 +135,22 @@ function DataHealthPage() {
         }
       />
 
+      {error && (
+        <Notice tone="danger" title={error}>
+          <Button className="mt-3" size="sm" variant="secondary" onClick={() => void load()}>
+            {ar ? "حاول تاني" : "Try again"}
+          </Button>
+        </Notice>
+      )}
+
+      {!run && domains.length === 0 && !error && (
+        <Notice tone="neutral" title={ar ? "مفيش فحوصات لسه" : "No health checks yet"}>
+          {ar
+            ? "بعد نشر الخريطة وتشغيل أول تحديث، هتظهر هنا حالة كل مصدر والمطابقة مع أودو."
+            : "After publishing the mapping and running the first refresh, each source and its Odoo reconciliation will appear here."}
+        </Notice>
+      )}
+
       {run && (
         <ReconciliationCard
           run={run}
@@ -137,46 +162,48 @@ function DataHealthPage() {
         />
       )}
 
-      <Card>
-        <CardBody>
-          <DataTable>
-            <thead>
-              <tr>
-                <Th>{ar ? "المجال" : "Domain"}</Th>
-                <Th>{ar ? "الحالة" : "Status"}</Th>
-                <Th>{t("last_sync")}</Th>
-                <Th>{ar ? "آخر محاولة" : "Last attempt"}</Th>
-                <Th>{ar ? "الصفوف" : "Rows"}</Th>
-              </tr>
-            </thead>
-            <tbody>
-              {domains.map((row) => (
-                <tr key={row.domain}>
-                  <Td className="font-medium">{row.domain}</Td>
-                  <Td>
-                    <StatusBadge status={row.status} />
-                  </Td>
-                  <Td className="text-sm text-text-muted">{formatTime(row.lastSuccessAt, ar)}</Td>
-                  <Td className="text-sm text-text-muted">{formatTime(row.lastAttemptAt, ar)}</Td>
-                  <Td className="tabular-nums">{row.rowCount ?? "—"}</Td>
+      {domains.length > 0 && (
+        <Card>
+          <CardBody>
+            <DataTable>
+              <thead>
+                <tr>
+                  <Th>{ar ? "المجال" : "Domain"}</Th>
+                  <Th>{ar ? "الحالة" : "Status"}</Th>
+                  <Th>{t("last_sync")}</Th>
+                  <Th>{ar ? "آخر محاولة" : "Last attempt"}</Th>
+                  <Th>{ar ? "الصفوف" : "Rows"}</Th>
                 </tr>
-              ))}
-            </tbody>
-          </DataTable>
-
-          {domains.some((d) => d.lastError) && (
-            <div className="mt-4 space-y-2">
-              {domains
-                .filter((d) => d.lastError)
-                .map((d) => (
-                  <Notice key={d.domain} tone="danger" title={d.domain}>
-                    {d.lastError}
-                  </Notice>
+              </thead>
+              <tbody>
+                {domains.map((row) => (
+                  <tr key={row.domain}>
+                    <Td className="font-medium">{row.domain}</Td>
+                    <Td>
+                      <StatusBadge status={row.status} />
+                    </Td>
+                    <Td className="text-sm text-text-muted">{formatTime(row.lastSuccessAt, ar)}</Td>
+                    <Td className="text-sm text-text-muted">{formatTime(row.lastAttemptAt, ar)}</Td>
+                    <Td className="tabular-nums">{row.rowCount ?? "—"}</Td>
+                  </tr>
                 ))}
-            </div>
-          )}
-        </CardBody>
-      </Card>
+              </tbody>
+            </DataTable>
+
+            {domains.some((d) => d.lastError) && (
+              <div className="mt-4 space-y-2">
+                {domains
+                  .filter((d) => d.lastError)
+                  .map((d) => (
+                    <Notice key={d.domain} tone="danger" title={d.domain}>
+                      {d.lastError}
+                    </Notice>
+                  ))}
+              </div>
+            )}
+          </CardBody>
+        </Card>
+      )}
     </div>
   );
 }

@@ -21,15 +21,24 @@ export const Route = createFileRoute("/api/v1/discovery")({
             listHealth(guard.context),
           ]);
 
-          const runs = await withWorkspace(guard.context, async (client) => {
-            const { rows } = await client.query(
+          const { runs, jobs } = await withWorkspace(guard.context, async (client) => {
+            const runsResult = await client.query(
               `SELECT id, status, error, started_at, finished_at
                  FROM sync_runs
                 WHERE workspace_id = $1 AND kind = 'discovery'
                 ORDER BY started_at DESC LIMIT 5`,
               [guard.context.workspaceId],
             );
-            return rows;
+            // A job exists before the worker creates a sync_run. Returning it
+            // closes the UX gap where a queued scan looked as if it vanished.
+            const jobsResult = await client.query(
+              `SELECT id, status, error, attempts, max_attempts, created_at, started_at, finished_at
+                 FROM job_queue
+                WHERE workspace_id = $1 AND kind = 'discovery'
+                ORDER BY created_at DESC LIMIT 5`,
+              [guard.context.workspaceId],
+            );
+            return { runs: runsResult.rows, jobs: jobsResult.rows };
           });
 
           return jsonResponse({
@@ -38,6 +47,8 @@ export const Route = createFileRoute("/api/v1/discovery")({
             snapshot,
             latestRun: runs[0] ?? null,
             recentRuns: runs,
+            latestJob: jobs[0] ?? null,
+            recentJobs: jobs,
             health: health.find((h) => h.domain === "discovery") ?? null,
           });
         } catch (error) {

@@ -1,6 +1,16 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, Link } from "@tanstack/react-router";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { AlertTriangle, Check, CircleHelp, Loader2, Lock, Sparkles, X } from "lucide-react";
+import {
+  AlertTriangle,
+  ArrowLeft,
+  ArrowRight,
+  Check,
+  CircleHelp,
+  Loader2,
+  Lock,
+  Sparkles,
+  X,
+} from "lucide-react";
 import { useI18n, Ltr } from "@/lib/i18n";
 import { can, useSession, workspaceFetch } from "@/lib/session";
 import {
@@ -108,6 +118,16 @@ function MappingPage() {
     [concepts],
   );
 
+  const manifestCounts = useMemo(
+    () => ({
+      total: mappings.length,
+      approved: mappings.filter((mapping) => mapping.status === "approved").length,
+      needsReview: mappings.filter((mapping) => mapping.status === "needs_review").length,
+      unavailable: mappings.filter((mapping) => mapping.status === "unavailable").length,
+    }),
+    [mappings],
+  );
+
   async function propose() {
     if (!workspaceId) return;
     setBusy(true);
@@ -136,7 +156,13 @@ function MappingPage() {
         method: "PATCH",
         body: JSON.stringify(patch),
       });
-      if (response.ok) await load();
+      if (response.ok) {
+        const next = mappings.find(
+          (mapping) => mapping.canonicalField !== selected && mapping.status === "needs_review",
+        );
+        if (next && "canonicalField" in patch) setSelected(next.canonicalField);
+        await load();
+      }
     } finally {
       setBusy(false);
     }
@@ -171,6 +197,10 @@ function MappingPage() {
   if (loading) return <Skeleton className="h-64 w-full" />;
 
   if (!manifest) {
+    const readyForProposal = ["snapshot_ready", "mapping_review", "published"].includes(
+      workspace.onboardingState,
+    );
+    const Arrow = ar ? ArrowLeft : ArrowRight;
     return (
       <div className="space-y-6">
         <PageHeader title={t("mapping_title")} />
@@ -179,10 +209,35 @@ function MappingPage() {
             ? "بعد ما نقرا بنية بياناتك، هنقترح معنى كل حقل وانت تراجع وتعتمد."
             : "Once your structure is read, we propose what each field means and you review and approve."}
         </Notice>
-        <Button onClick={propose} disabled={busy || !mayApprove}>
-          {busy ? <Loader2 className="size-4 animate-spin" /> : <Sparkles className="size-4" />}
-          {ar ? "ولّد الاقتراح" : "Generate proposal"}
-        </Button>
+        {readyForProposal ? (
+          <Button onClick={propose} disabled={busy || !mayApprove}>
+            {busy ? <Loader2 className="size-4 animate-spin" /> : <Sparkles className="size-4" />}
+            {busy
+              ? ar
+                ? "جاري تحليل الحقول"
+                : "Analyzing fields"
+              : ar
+                ? "ولّد الاقتراح"
+                : "Generate proposal"}
+          </Button>
+        ) : (
+          <Notice
+            tone="warning"
+            title={ar ? "اقرأ بنية أودو الأول" : "Discover the Odoo structure first"}
+          >
+            <p>
+              {ar
+                ? "المابينج بيتبني من الموديلات والحقول اللي اكتشفناها، فمحتاج تكمل خطوة الربط الأول."
+                : "Mapping is built from discovered models and fields, so complete the connection step first."}
+            </p>
+            <Link to="/onboarding" className="mt-3 inline-block">
+              <Button size="sm">
+                {ar ? "ارجع للربط" : "Go to connection"}
+                <Arrow className="size-4" />
+              </Button>
+            </Link>
+          </Notice>
+        )}
       </div>
     );
   }
@@ -268,10 +323,46 @@ function MappingPage() {
         </Card>
       )}
 
+      <div className="grid grid-cols-3 gap-3">
+        <MappingStat
+          label={ar ? "تم الاعتماد" : "Approved"}
+          value={manifestCounts.approved}
+          tone="success"
+        />
+        <MappingStat
+          label={ar ? "محتاج مراجعة" : "Needs review"}
+          value={manifestCounts.needsReview}
+          tone="warning"
+        />
+        <MappingStat
+          label={ar ? "غير متاح" : "Unavailable"}
+          value={manifestCounts.unavailable}
+          tone="neutral"
+        />
+      </div>
+
+      <div className="lg:hidden">
+        <SelectField
+          label={ar ? "الحقل اللي بتراجعه" : "Field under review"}
+          value={selected ?? ""}
+          onChange={(event) => setSelected(event.target.value)}
+        >
+          {mappings.map((mapping) => {
+            const concept = conceptsByKey.get(mapping.canonicalField);
+            return (
+              <option key={mapping.canonicalField} value={mapping.canonicalField}>
+                {concept ? (ar ? concept.label.ar : concept.label.en) : mapping.canonicalField}
+                {mapping.status === "approved" ? (ar ? " — معتمد" : " — approved") : ""}
+              </option>
+            );
+          })}
+        </SelectField>
+      </div>
+
       {/* Three panels on desktop, sequential on mobile: concept list, the
           decision, then the evidence behind it. */}
       <div className="grid gap-4 lg:grid-cols-[18rem_1fr_20rem]">
-        <Card className="max-h-[32rem] overflow-y-auto">
+        <Card className="hidden max-h-[32rem] overflow-y-auto lg:block">
           <ul className="divide-y divide-border">
             {mappings.map((mapping) => {
               const concept = conceptsByKey.get(mapping.canonicalField);
@@ -448,6 +539,26 @@ function MappingPage() {
           </CardBody>
         </Card>
       </div>
+    </div>
+  );
+}
+
+function MappingStat({
+  label,
+  value,
+  tone,
+}: {
+  label: string;
+  value: number;
+  tone: "success" | "warning" | "neutral";
+}) {
+  return (
+    <div className="rounded-lg border border-border bg-surface p-3">
+      <p className="text-xs text-text-muted">{label}</p>
+      <p className="mt-1 text-xl font-semibold tabular-nums">{value}</p>
+      <div
+        className={`mt-2 h-1 rounded-full ${tone === "success" ? "bg-success" : tone === "warning" ? "bg-warning" : "bg-border-strong"}`}
+      />
     </div>
   );
 }

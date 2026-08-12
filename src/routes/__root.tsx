@@ -1,5 +1,6 @@
 import {
   HeadContent,
+  Navigate,
   Outlet,
   Scripts,
   createRootRoute,
@@ -46,8 +47,6 @@ function Chrome() {
   const pathname = useRouterState({ select: (s) => s.location.pathname });
   const { user, loading } = useSession();
 
-  if (PUBLIC_ROUTES.has(pathname)) return <Outlet />;
-
   if (loading) {
     return (
       <div className="grid min-h-dvh place-items-center text-text-muted">
@@ -56,9 +55,13 @@ function Chrome() {
     );
   }
 
-  // Not signed in and not on a public route: render the outlet bare so the
-  // page itself can show its own sign-in prompt rather than flashing the shell.
-  if (!user) return <Outlet />;
+  if (PUBLIC_ROUTES.has(pathname)) {
+    return user ? <Navigate to="/" replace /> : <Outlet />;
+  }
+
+  // Every non-public screen is part of the authenticated product. Redirecting
+  // here avoids pages rendering half a form and only failing after an API call.
+  if (!user) return <Navigate to="/sign-in" replace />;
 
   return (
     <AppShell>

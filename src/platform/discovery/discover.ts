@@ -102,7 +102,9 @@ export interface DiscoverOptions {
   models?: readonly string[];
   /** Follow relations into allowlisted models not in the initial set. */
   followRelations?: boolean;
-  ctx?: Pick<JobContext, "checkpoint" | "resumeFrom" | "signal">;
+  ctx?: Pick<JobContext, "checkpoint" | "resumeFrom" | "signal"> & {
+    heartbeat?: () => Promise<void>;
+  };
 }
 
 /**
@@ -185,6 +187,7 @@ export async function discoverSchema(
       completed.add(model);
       queue.shift();
       await options.ctx?.checkpoint?.(snapshotCheckpoint());
+      await options.ctx?.heartbeat?.();
       continue;
     }
 
@@ -244,6 +247,7 @@ export async function discoverSchema(
     queue.shift();
 
     await options.ctx?.checkpoint?.(snapshotCheckpoint());
+    await options.ctx?.heartbeat?.();
   }
 
   // Sorting before hashing makes the hash independent of the order Odoo

@@ -62,7 +62,9 @@ export function CopilotPanel() {
     }
   }
 
-  if (!workspace) return null;
+  // Before publication there are no approved metrics to answer from. Hiding
+  // the launcher keeps onboarding focused and avoids a dead-end assistant.
+  if (!workspace || workspace.onboardingState !== "published") return null;
 
   if (!open) {
     return (

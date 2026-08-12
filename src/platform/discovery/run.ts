@@ -65,6 +65,17 @@ async function persistCheckpoint(
 
 async function openRun(context: WorkspaceContext, connectionId: string) {
   return withWorkspace(context, async (client) => {
+    // A worker can die after opening the run but before finishing the job. The
+    // durable job is then reclaimed; reuse its run/checkpoint instead of
+    // colliding with the one-running-run uniqueness guard forever.
+    const existing = await client.query<{ id: string; checkpoint: Record<string, unknown> }>(
+      `SELECT id, checkpoint FROM sync_runs
+        WHERE workspace_id = $1 AND kind = 'discovery' AND status = 'running'
+        ORDER BY started_at DESC LIMIT 1`,
+      [context.workspaceId],
+    );
+    if (existing.rows[0]) return existing.rows[0];
+
     // A partial unique index allows only one live run per workspace and kind,
     // so a double-click cannot start two concurrent scans.
     const { rows } = await client.query<{ id: string; checkpoint: Record<string, unknown> }>(
@@ -128,6 +139,9 @@ export async function startDiscovery(context: WorkspaceContext): Promise<{ jobId
 
   const { enqueueJob } = await import("../jobs/durable");
   const { id } = await enqueueJob({ workspaceId: context.workspaceId, kind: "discovery" });
+  // Reflect accepted work immediately. Previously the state changed only when
+  // a worker claimed the job, so a queued scan could look like it never began.
+  await setOnboardingState(context, "discovering");
   return { jobId: id };
 }
 
@@ -152,7 +166,9 @@ export async function runDiscovery(
   });
 
   const run = await openRun(context, connection.id);
-  const resumeFrom = await resumePoint(context);
+  const resumeFrom = Object.keys(run.checkpoint ?? {}).length
+    ? run.checkpoint
+    : await resumePoint(context);
 
   {
     const ctx = job;
@@ -173,6 +189,7 @@ export async function runDiscovery(
                 resumeFrom,
                 checkpoint: (state: Record<string, unknown>) =>
                   persistCheckpoint(context, run.id, state),
+                heartbeat: ctx.heartbeat,
               },
             }),
         );

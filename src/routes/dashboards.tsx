@@ -82,6 +82,8 @@ function DashboardsPage() {
   const [syncing, setSyncing] = useState(false);
   const [generation, setGeneration] = useState<{ published_at?: string } | null>(null);
   const [syncFailed, setSyncFailed] = useState(false);
+  const [syncStatus, setSyncStatus] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
   const template = useMemo(
     () => dashboards.find((d) => d.key === selectedKey) ?? dashboards[0] ?? null,
@@ -92,13 +94,23 @@ function DashboardsPage() {
     () => [...new Set((template?.definition.widgets ?? []).flatMap((w) => w.metricKeys))],
     [template],
   );
+  // The signature stays stable when a fetch returns equivalent dashboard
+  // objects, preventing the loading effect from calling itself forever.
+  const metricKeySignature = JSON.stringify(metricKeys);
+  const queryMetricKeys = useMemo(
+    () => JSON.parse(metricKeySignature) as string[],
+    [metricKeySignature],
+  );
+
+  useEffect(() => {
+    setSelectedKey("");
+    setValues([]);
+  }, [workspaceId]);
 
   const load = useCallback(async () => {
-    if (!workspaceId || !metricKeys.length) {
-      setLoading(false);
-      return;
-    }
+    if (!workspaceId) return;
     setLoading(true);
+    setError(null);
     try {
       const [dashboardsRes, syncRes] = await Promise.all([
         workspaceFetch(workspaceId, "/api/v1/dashboards"),
@@ -110,14 +122,16 @@ function DashboardsPage() {
         setDashboards(body.dashboards ?? []);
         setMetrics(body.metrics ?? []);
         setSelectedKey((current) => current || (body.dashboards?.[0]?.key ?? ""));
+      } else {
+        setError(ar ? "تعذر تحميل اللوحات." : "Could not load dashboards.");
       }
 
       // Metric values are fetched separately because the dashboard list decides
       // which keys to ask for.
-      if (metricKeys.length) {
+      if (queryMetricKeys.length) {
         const metricsRes = await workspaceFetch(workspaceId, "/api/v1/metrics/query", {
           method: "POST",
-          body: JSON.stringify({ metricKeys, dateRange: presetRange(preset) }),
+          body: JSON.stringify({ metricKeys: queryMetricKeys, dateRange: presetRange(preset) }),
         });
         if (metricsRes.ok) setValues((await metricsRes.json()).values ?? []);
       } else {
@@ -127,11 +141,14 @@ function DashboardsPage() {
         const body = await syncRes.json();
         setGeneration(body.generation ?? null);
         setSyncFailed(body.latestRun?.status === "failed");
+        setSyncStatus(body.latestJob?.status ?? body.latestRun?.status ?? null);
       }
+    } catch {
+      setError(ar ? "تعذر الاتصال بالخادم." : "Could not reach the server.");
     } finally {
       setLoading(false);
     }
-  }, [workspaceId, metricKeys, preset]);
+  }, [workspaceId, queryMetricKeys, preset, ar]);
 
   useEffect(() => {
     void load();
@@ -140,13 +157,25 @@ function DashboardsPage() {
   async function runSync() {
     if (!workspaceId) return;
     setSyncing(true);
+    setError(null);
     try {
-      await workspaceFetch(workspaceId, "/api/v1/sync", { method: "POST" });
-      setTimeout(() => void load(), 2_000);
+      const response = await workspaceFetch(workspaceId, "/api/v1/sync", { method: "POST" });
+      const body = await response.json();
+      if (!response.ok) {
+        setError(String(body.error ?? (ar ? "تعذر بدء التحديث." : "Could not start the refresh.")));
+        return;
+      }
+      setSyncStatus("queued");
     } finally {
       setSyncing(false);
     }
   }
+
+  useEffect(() => {
+    if (syncStatus !== "queued" && syncStatus !== "running") return;
+    const timer = setInterval(() => void load(), 3_000);
+    return () => clearInterval(timer);
+  }, [syncStatus, load]);
 
   async function saveDraft(publish: boolean) {
     if (!workspaceId || !template) return;
@@ -228,45 +257,84 @@ function DashboardsPage() {
               </Button>
             )}
             {can(workspace, "sync.run") && (
-              <Button size="sm" variant="secondary" onClick={runSync} disabled={syncing}>
-                {syncing ? (
+              <Button
+                size="sm"
+                variant="secondary"
+                onClick={runSync}
+                disabled={syncing || syncStatus === "queued" || syncStatus === "running"}
+              >
+                {syncing || syncStatus === "queued" || syncStatus === "running" ? (
                   <Loader2 className="size-4 animate-spin" />
                 ) : (
                   <RefreshCw className="size-4" />
                 )}
-                {ar ? "تحديث البيانات" : "Refresh data"}
+                {syncStatus === "queued"
+                  ? ar
+                    ? "في انتظار التحديث"
+                    : "Refresh queued"
+                  : syncStatus === "running"
+                    ? ar
+                      ? "جاري التحديث"
+                      : "Refreshing"
+                    : ar
+                      ? "تحديث البيانات"
+                      : "Refresh data"}
               </Button>
             )}
           </>
         }
       />
 
-      <div className="grid gap-3 sm:grid-cols-2 lg:max-w-xl">
-        <SelectField
-          label={ar ? "اللوحة" : "Dashboard"}
-          value={selectedKey}
-          onChange={(event) => {
-            setSelectedKey(event.target.value);
-            setEditing(false);
-          }}
+      {error && <Notice tone="danger">{error}</Notice>}
+
+      {(syncStatus === "queued" || syncStatus === "running") && (
+        <Notice
+          tone="brand"
+          icon={<Loader2 className="size-4 animate-spin" />}
+          title={ar ? "التحديث شغال في الخلفية" : "The refresh is running in the background"}
         >
-          {dashboards.map((option) => (
-            <option key={option.key} value={option.key}>
-              {(ar ? option.title.ar : option.title.en) +
-                (option.status === "draft" ? (ar ? " (مسودة)" : " (draft)") : "")}
-            </option>
-          ))}
-        </SelectField>
-        <SelectField
-          label={ar ? "الفترة" : "Period"}
-          value={preset}
-          onChange={(event) => setPreset(event.target.value)}
-        >
-          <option value="month">{ar ? "الشهر الحالي" : "This month"}</option>
-          <option value="last30">{ar ? "آخر ٣٠ يوم" : "Last 30 days"}</option>
-          <option value="year">{ar ? "من بداية السنة" : "Year to date"}</option>
-        </SelectField>
-      </div>
+          {ar
+            ? "تقدر تسيب الصفحة؛ آخر بيانات ناجحة هتفضل ظاهرة لحد ما التحديث الجديد يكتمل."
+            : "You can leave this page; the last successful data remains visible until the new refresh completes."}
+        </Notice>
+      )}
+
+      {!loading && dashboards.length === 0 && (
+        <Notice tone="neutral" title={ar ? "مفيش لوحة متاحة لسه" : "No dashboard is available yet"}>
+          {ar
+            ? "انشر خريطة الحقول الأول، وبعدها القوالب الجاهزة هتظهر هنا تلقائيًا."
+            : "Publish the field mapping first; starter dashboards will then appear here automatically."}
+        </Notice>
+      )}
+
+      {dashboards.length > 0 && (
+        <div className="grid gap-3 sm:grid-cols-2 lg:max-w-xl">
+          <SelectField
+            label={ar ? "اللوحة" : "Dashboard"}
+            value={selectedKey}
+            onChange={(event) => {
+              setSelectedKey(event.target.value);
+              setEditing(false);
+            }}
+          >
+            {dashboards.map((option) => (
+              <option key={option.key} value={option.key}>
+                {(ar ? option.title.ar : option.title.en) +
+                  (option.status === "draft" ? (ar ? " (مسودة)" : " (draft)") : "")}
+              </option>
+            ))}
+          </SelectField>
+          <SelectField
+            label={ar ? "الفترة" : "Period"}
+            value={preset}
+            onChange={(event) => setPreset(event.target.value)}
+          >
+            <option value="month">{ar ? "الشهر الحالي" : "This month"}</option>
+            <option value="last30">{ar ? "آخر ٣٠ يوم" : "Last 30 days"}</option>
+            <option value="year">{ar ? "من بداية السنة" : "Year to date"}</option>
+          </SelectField>
+        </div>
+      )}
 
       {!published && (
         <Notice tone="warning" title={t("never_synced")}>

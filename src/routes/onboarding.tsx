@@ -1,8 +1,11 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, Link } from "@tanstack/react-router";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   AlertTriangle,
+  ArrowLeft,
+  ArrowRight,
   CheckCircle2,
+  ChevronDown,
   CircleDashed,
   Database,
   KeyRound,
@@ -55,6 +58,16 @@ interface Connection {
   hasSecret: boolean;
   status: string;
   odooVersion: string | null;
+  lastTestState: string | null;
+  lastTestedAt: string | null;
+}
+
+interface DiscoveryJob {
+  id: string;
+  status: "queued" | "running" | "succeeded" | "failed" | "cancelled";
+  error: string | null;
+  attempts: number;
+  max_attempts: number;
 }
 
 interface SnapshotSummary {
@@ -98,6 +111,7 @@ function OnboardingPage() {
   const [test, setTest] = useState<ConnectionTestResult | null>(null);
   const [snapshot, setSnapshot] = useState<SnapshotSummary | null>(null);
   const [runFailed, setRunFailed] = useState(false);
+  const [job, setJob] = useState<DiscoveryJob | null>(null);
   const [running, setRunning] = useState(false);
   const [busy, setBusy] = useState<null | "saving" | "testing" | "discovering">(null);
   const [error, setError] = useState<string | null>(null);
@@ -133,9 +147,12 @@ function OnboardingPage() {
 
       if (discoveryRes.ok) {
         const body = await discoveryRes.json();
+        const latestJob = (body.latestJob ?? null) as DiscoveryJob | null;
+        const jobActive = latestJob?.status === "queued" || latestJob?.status === "running";
+        setJob(latestJob);
         setSnapshot(body.snapshot ?? null);
-        setRunning(body.latestRun?.status === "running");
-        setRunFailed(body.latestRun?.status === "failed");
+        setRunning(jobActive || body.latestRun?.status === "running");
+        setRunFailed(latestJob?.status === "failed" || body.latestRun?.status === "failed");
       }
     } catch {
       // A refresh failure is not a wizard failure: keep what is on screen.
@@ -157,6 +174,9 @@ function OnboardingPage() {
 
   const readable = useMemo(() => test?.probes.filter((p) => p.canRead).length ?? 0, [test]);
   const gaps = useMemo(() => test?.probes.filter((p) => p.gap) ?? [], [test]);
+  const previouslyVerified = connection?.lastTestState === "success";
+  const mayDiscover = readable > 0 || previouslyVerified || Boolean(snapshot);
+  const Arrow = ar ? ArrowLeft : ArrowRight;
 
   async function call(
     kind: "saving" | "testing" | "discovering",
@@ -400,41 +420,103 @@ function OnboardingPage() {
                   </p>
                 )}
 
-                <DataTable>
-                  <thead>
-                    <tr>
-                      <Th>{ar ? "الموديل" : "Model"}</Th>
-                      <Th>{ar ? "القراءة" : "Read"}</Th>
-                      <Th>{ar ? "الحقول" : "Fields"}</Th>
-                      <Th>{ar ? "السجلات" : "Records"}</Th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {test.probes.map((probe) => (
-                      <tr key={probe.model}>
-                        <Td className="font-mono text-xs">
-                          <Ltr>{probe.model}</Ltr>
-                        </Td>
-                        <Td>
-                          {probe.canRead ? (
-                            <CheckCircle2 className="size-4 text-success" />
-                          ) : (
-                            <XCircle className="size-4 text-danger" />
-                          )}
-                        </Td>
-                        {/* An em dash, never 0 — unavailable is not zero. */}
-                        <Td className="tabular-nums">
-                          {probe.fieldCount === null ? DASH : formatNumber(probe.fieldCount, lang)}
-                        </Td>
-                        <Td className="tabular-nums">
-                          {probe.recordCount === null
-                            ? DASH
-                            : formatNumber(probe.recordCount, lang)}
-                        </Td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </DataTable>
+                <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+                  <Stat label={ar ? "موديلات متاحة" : "Readable models"} value={readable} />
+                  <Stat
+                    label={ar ? "إجمالي الموديلات" : "Models checked"}
+                    value={test.probes.length}
+                  />
+                  <Stat
+                    label={ar ? "نقص الصلاحيات" : "Permission gaps"}
+                    value={gaps.length}
+                    tone={gaps.length ? "warning" : "neutral"}
+                  />
+                </div>
+
+                {readable > 0 && (
+                  <div className="flex flex-wrap items-center gap-3 rounded-lg border border-brand/30 bg-brand-soft p-3">
+                    <div className="min-w-0 flex-1">
+                      <p className="font-medium text-brand-ink">
+                        {ar
+                          ? "الاتصال جاهز لقراءة البنية"
+                          : "The connection is ready for discovery"}
+                      </p>
+                      <p className="text-xs text-text-muted">
+                        {ar
+                          ? "هنقرأ أسماء الموديلات والحقول فقط — من غير بيانات عملاء أو مبيعات."
+                          : "We read model and field names only — never customer or sales records."}
+                      </p>
+                    </div>
+                    <Button
+                      disabled={!can(workspace, "discovery.run") || busy !== null || running}
+                      onClick={() =>
+                        call("discovering", "/api/v1/discovery", { method: "POST" }, () =>
+                          setRunning(true),
+                        )
+                      }
+                    >
+                      {running ? (
+                        <Loader2 className="size-4 animate-spin" />
+                      ) : (
+                        <RefreshCw className="size-4" />
+                      )}
+                      {running
+                        ? job?.status === "queued"
+                          ? ar
+                            ? "في انتظار البدء"
+                            : "Waiting to start"
+                          : ar
+                            ? "جاري القراءة"
+                            : "Reading structure"
+                        : t("start_discovery")}
+                    </Button>
+                  </div>
+                )}
+
+                <details className="group rounded-lg border border-border">
+                  <summary className="flex cursor-pointer list-none items-center justify-between gap-3 p-3 text-sm font-medium">
+                    <span>{ar ? "عرض تفاصيل الصلاحيات" : "Show permission details"}</span>
+                    <ChevronDown className="size-4 text-text-muted transition-transform group-open:rotate-180" />
+                  </summary>
+                  <div className="border-t border-border p-3">
+                    <DataTable>
+                      <thead>
+                        <tr>
+                          <Th>{ar ? "الموديل" : "Model"}</Th>
+                          <Th>{ar ? "القراءة" : "Read"}</Th>
+                          <Th>{ar ? "الحقول" : "Fields"}</Th>
+                          <Th>{ar ? "السجلات" : "Records"}</Th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {test.probes.map((probe) => (
+                          <tr key={probe.model}>
+                            <Td className="font-mono text-xs">
+                              <Ltr>{probe.model}</Ltr>
+                            </Td>
+                            <Td>
+                              {probe.canRead ? (
+                                <CheckCircle2 className="size-4 text-success" />
+                              ) : (
+                                <XCircle className="size-4 text-danger" />
+                              )}
+                            </Td>
+                            <Td className="tabular-nums">
+                              {probe.fieldCount === null
+                                ? DASH
+                                : formatNumber(probe.fieldCount, lang)}
+                            </Td>
+                            <Td className="tabular-nums">
+                              {probe.recordCount === null
+                                ? DASH
+                                : formatNumber(probe.recordCount, lang)}
+                            </Td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </DataTable>
+                  </div>
+                </details>
 
                 {gaps.length > 0 && (
                   <Notice
@@ -451,8 +533,21 @@ function OnboardingPage() {
                       : "Analytics will run on the available models; the rest are recorded as permission gaps until granted."}
                   </Notice>
                 )}
-
-                {readable > 0 && (
+              </>
+            ) : previouslyVerified ? (
+              <div className="flex flex-wrap items-center gap-3 rounded-lg border border-success/30 bg-success-soft p-3">
+                <CheckCircle2 className="size-5 text-success" />
+                <div className="min-w-0 flex-1">
+                  <p className="font-medium">
+                    {ar ? "الاتصال اتراجع بنجاح" : "Connection already verified"}
+                  </p>
+                  <p className="text-xs text-text-muted">
+                    {ar
+                      ? "مش محتاج تعيد الاختبار بعد كل Refresh."
+                      : "You do not need to repeat the test after every refresh."}
+                  </p>
+                </div>
+                {mayDiscover && (
                   <Button
                     disabled={!can(workspace, "discovery.run") || busy !== null || running}
                     onClick={() =>
@@ -466,10 +561,10 @@ function OnboardingPage() {
                     ) : (
                       <RefreshCw className="size-4" />
                     )}
-                    {t("start_discovery")}
+                    {running ? (ar ? "جاري القراءة" : "Reading structure") : t("start_discovery")}
                   </Button>
                 )}
-              </>
+              </div>
             ) : (
               <p className="text-sm text-text-muted">
                 {ar
@@ -490,12 +585,54 @@ function OnboardingPage() {
           />
           <CardBody className="space-y-4">
             {running && (
-              <p className="flex items-center gap-2 text-sm text-text-muted">
-                <Loader2 className="size-4 animate-spin" />
-                {ar
-                  ? "جاري القراءة… العملية بتكمل من آخر نقطة لو حصل انقطاع."
-                  : "Reading… the scan resumes from its last checkpoint if interrupted."}
-              </p>
+              <Notice
+                tone="brand"
+                icon={<Loader2 className="size-4 animate-spin" />}
+                title={
+                  job?.status === "queued"
+                    ? ar
+                      ? "القراءة في الطابور"
+                      : "Discovery is queued"
+                    : ar
+                      ? "جاري قراءة بنية أودو"
+                      : "Reading the Odoo structure"
+                }
+              >
+                {job?.status === "queued" && job.error
+                  ? ar
+                    ? `حصل انقطاع مؤقت والمحاولة هتتكرر تلقائيًا (${job.attempts}/${job.max_attempts}).`
+                    : `A temporary interruption occurred; the job will retry automatically (${job.attempts}/${job.max_attempts}).`
+                  : ar
+                    ? "تقدر تسيب الصفحة وترجع لها — العملية بتكمل وبتحفظ آخر نقطة وصلت لها."
+                    : "You can leave this page and come back — the job keeps running and saves its progress."}
+              </Notice>
+            )}
+
+            {runFailed && !running && !snapshot && (
+              <Notice
+                tone="danger"
+                icon={<XCircle className="size-4" />}
+                title={ar ? "القراءة ما اكتملتش" : "Discovery did not finish"}
+              >
+                <p>
+                  {ar
+                    ? "آخر محاولة فشلت، ومفيش نسخة سابقة نعرضها."
+                    : "The latest attempt failed and there is no previous snapshot to show."}
+                </p>
+                <Button
+                  className="mt-3"
+                  size="sm"
+                  disabled={!can(workspace, "discovery.run") || busy !== null}
+                  onClick={() =>
+                    call("discovering", "/api/v1/discovery", { method: "POST" }, () =>
+                      setRunning(true),
+                    )
+                  }
+                >
+                  <RefreshCw className="size-4" />
+                  {ar ? "حاول تاني" : "Try again"}
+                </Button>
+              </Notice>
             )}
 
             {snapshot && (
@@ -530,6 +667,47 @@ function OnboardingPage() {
                     ? "نفس البصمة معناها إن بنية أودو ما اتغيرتش."
                     : "An identical hash means the Odoo structure has not changed."}
                 </p>
+
+                {!running && (
+                  <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-success/30 bg-success-soft p-3">
+                    <div>
+                      <p className="font-medium text-success">
+                        {runFailed
+                          ? ar
+                            ? "آخر نسخة ناجحة لسه متاحة"
+                            : "The last good snapshot is still available"
+                          : ar
+                            ? "قراءة البنية اكتملت"
+                            : "Structure discovery is complete"}
+                      </p>
+                      <p className="text-xs text-text-muted">
+                        {ar
+                          ? "الخطوة الجاية: راجع معاني الحقول واعتمدها."
+                          : "Next: review and approve what each field means."}
+                      </p>
+                    </div>
+                    <Link to="/mapping">
+                      <Button>
+                        {ar ? "راجع الخريطة" : "Review mapping"}
+                        <Arrow className="size-4" />
+                      </Button>
+                    </Link>
+                    {runFailed && (
+                      <Button
+                        variant="secondary"
+                        disabled={!can(workspace, "discovery.run") || busy !== null}
+                        onClick={() =>
+                          call("discovering", "/api/v1/discovery", { method: "POST" }, () =>
+                            setRunning(true),
+                          )
+                        }
+                      >
+                        <RefreshCw className="size-4" />
+                        {ar ? "أعد القراءة" : "Retry discovery"}
+                      </Button>
+                    )}
+                  </div>
+                )}
               </>
             )}
           </CardBody>
