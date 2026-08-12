@@ -717,12 +717,7 @@ function OnboardingPage() {
                   size="sm"
                   disabled={!can(workspace, "discovery.run") || busy !== null}
                   onClick={() =>
-                    call(
-                      "discovering",
-                      "/api/v1/discovery",
-                      { method: "POST" },
-                      discoveryAccepted,
-                    )
+                    call("discovering", "/api/v1/discovery", { method: "POST" }, discoveryAccepted)
                   }
                 >
                   <RefreshCw className="size-4" />
