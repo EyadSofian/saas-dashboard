@@ -8,6 +8,7 @@
 // tables, with RLS underneath (ADR-0004).
 import { betterAuth } from "better-auth";
 import { getPool } from "../db/pool";
+import { emailVerificationRequired, trySend, verificationMessage } from "./mailer";
 
 // Better Auth infers a literal options type, which does not unify with the
 // declared `Auth<BetterAuthOptions>`. The concrete instance type is captured
@@ -19,7 +20,25 @@ function createAuth() {
     database: getPool(),
     secret: process.env.BETTER_AUTH_SECRET,
     baseURL: process.env.PUBLIC_APP_URL ?? "http://localhost:3000",
-    emailAndPassword: { enabled: true, requireEmailVerification: false },
+    emailAndPassword: {
+      enabled: true,
+      // On by default. An analytics product that accepts any typed address will
+      // happily send someone else's revenue to a typo.
+      requireEmailVerification: emailVerificationRequired(),
+    },
+    emailVerification: {
+      sendOnSignUp: true,
+      autoSignInAfterVerification: true,
+      // One hour. Long enough to find the message, short enough that a link
+      // sitting in an old inbox is not a standing way into the account.
+      expiresIn: 3600,
+      sendVerificationEmail: async ({ user, url }) => {
+        // A delivery failure must not leave a half-created account with no way
+        // forward, so it is reported rather than thrown: Better Auth surfaces
+        // the sign-up result and the user can request another link.
+        await trySend(verificationMessage(user.email, url));
+      },
+    },
     session: {
       expiresIn: 60 * 60 * 24 * 7, // 7 days
       updateAge: 60 * 60 * 24, // refresh at most daily
