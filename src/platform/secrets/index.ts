@@ -136,14 +136,42 @@ export class LocalAesGcmSecretStore implements SecretStore {
 }
 
 /**
+ * Which deployment this is, for the purpose of holding real customer secrets.
+ *
+ * Deliberately NOT `NODE_ENV`. Every PaaS — Railway included — sets
+ * `NODE_ENV=production` to get optimized builds, which says nothing about
+ * whether the deployment holds a real customer's ERP credentials. Conflating
+ * the two leaves only two bad options: block staging entirely, or weaken the
+ * guard everywhere.
+ *
+ * Unset means production, so a deployment that never sets it is protected.
+ */
+export type AppEnv = "production" | "staging" | "development";
+
+export function appEnv(): AppEnv {
+  const raw = (process.env.APP_ENV ?? "").trim().toLowerCase();
+  if (raw === "staging" || raw === "development") return raw;
+  if (raw === "production") return "production";
+  // Nothing set: fall back to NODE_ENV, and treat anything non-local as
+  // production. Fail-closed — an unlabelled deployment is assumed to be real.
+  return process.env.NODE_ENV === "production" ? "production" : "development";
+}
+
+/**
  * Fail-closed production guard. Development convenience must not become the
  * production posture by accident, so this refuses the write rather than warning.
+ *
+ * Staging is allowed to use the local adapter because staging holds test
+ * credentials by definition. If a staging deployment is pointed at a real
+ * customer's Odoo, that is a process failure this guard cannot catch — which is
+ * exactly why the production default is the strict one.
  */
 export function assertProductionSafe(store: SecretStore): void {
-  if (process.env.NODE_ENV === "production" && !store.isProductionGrade) {
+  if (appEnv() === "production" && !store.isProductionGrade) {
     throw new SecretStoreError(
       `Refusing to store a customer credential: adapter "${store.adapterId}" is not ` +
-        `production-grade. Configure a production SecretStore adapter (see ADR-0002).`,
+        `production-grade. Configure a production SecretStore adapter (ADR-0002), or ` +
+        `set APP_ENV=staging if this deployment only ever holds test credentials.`,
       "production_guard",
     );
   }

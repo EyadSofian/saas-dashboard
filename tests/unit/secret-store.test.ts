@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import {
   LocalAesGcmSecretStore,
   SecretStoreError,
+  appEnv,
   assertProductionSafe,
   getSecretStore,
   setSecretStore,
@@ -134,6 +135,54 @@ describe("production guard", () => {
       ).not.toThrow();
     } finally {
       process.env.NODE_ENV = previous;
+    }
+  });
+
+  // Railway (and every other PaaS) sets NODE_ENV=production for build
+  // optimization. That must not be the signal that decides whether a
+  // deployment may hold real customer credentials.
+  it("allows the local adapter on an explicitly-labelled staging deployment", async () => {
+    const store = new LocalAesGcmSecretStore(ROOT_KEY);
+    const previousNode = process.env.NODE_ENV;
+    const previousApp = process.env.APP_ENV;
+    process.env.NODE_ENV = "production";
+    process.env.APP_ENV = "staging";
+    try {
+      await expect(store.put(ref, API_KEY)).resolves.toBeTruthy();
+    } finally {
+      process.env.NODE_ENV = previousNode;
+      if (previousApp === undefined) delete process.env.APP_ENV;
+      else process.env.APP_ENV = previousApp;
+    }
+  });
+
+  it("still refuses when APP_ENV says production, whatever NODE_ENV says", async () => {
+    const store = new LocalAesGcmSecretStore(ROOT_KEY);
+    const previousNode = process.env.NODE_ENV;
+    const previousApp = process.env.APP_ENV;
+    process.env.NODE_ENV = "development";
+    process.env.APP_ENV = "production";
+    try {
+      await expect(store.put(ref, API_KEY)).rejects.toThrow(/not production-grade/i);
+    } finally {
+      process.env.NODE_ENV = previousNode;
+      if (previousApp === undefined) delete process.env.APP_ENV;
+      else process.env.APP_ENV = previousApp;
+    }
+  });
+
+  it("treats an unset APP_ENV on a production build as production (fail-closed)", async () => {
+    const store = new LocalAesGcmSecretStore(ROOT_KEY);
+    const previousNode = process.env.NODE_ENV;
+    const previousApp = process.env.APP_ENV;
+    process.env.NODE_ENV = "production";
+    delete process.env.APP_ENV;
+    try {
+      expect(appEnv()).toBe("production");
+      await expect(store.put(ref, API_KEY)).rejects.toThrow(/not production-grade/i);
+    } finally {
+      process.env.NODE_ENV = previousNode;
+      if (previousApp !== undefined) process.env.APP_ENV = previousApp;
     }
   });
 });
