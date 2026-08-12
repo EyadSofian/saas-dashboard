@@ -46,6 +46,11 @@ export async function startTestDatabase(): Promise<TestDatabase> {
     stop: async () => {
       started = null;
       try {
+        // pg.Pool#end waits for checked-out clients, but on fast Linux CI
+        // runners the final socket close event can land one tick later. Give
+        // it a short grace period before terminating the embedded server so
+        // Vitest never mistakes a deliberate shutdown for an uncaught 57P01.
+        await new Promise((resolve) => setTimeout(resolve, 100));
         await pg.stop();
       } finally {
         await rm(dataDir, { recursive: true, force: true }).catch(() => undefined);
