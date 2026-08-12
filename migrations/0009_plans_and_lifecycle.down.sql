@@ -1,0 +1,5 @@
+-- 0009 · down
+DROP TABLE IF EXISTS deletion_requests CASCADE;
+DROP TABLE IF EXISTS usage_events CASCADE;
+DROP TABLE IF EXISTS workspace_subscriptions CASCADE;
+DROP TABLE IF EXISTS plans CASCADE;

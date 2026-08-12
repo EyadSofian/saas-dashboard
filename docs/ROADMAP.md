@@ -150,13 +150,36 @@ a larger golden question set with dialect coverage before broad release.
 
 ---
 
-## Phase 7 — Commercial readiness
+## Phase 7 — Commercial readiness ◑ partly delivered
 
-- Marketing connectors with per-workspace credentials.
-- Additional industry packs beyond the general catalog.
-- Usage metering, plan entitlements, billing.
-- SSO/SAML, workspace export and delete, retention policies.
-- Runbooks, support tooling, onboarding analytics.
+**Delivered.** Three plans with real, enforced limits (connections, seats,
+dashboards, synced rows, sync floor, copilot and AI mapping). Usage metering,
+append-only. Workspace export excluding Odoo credentials — an export travels by
+email and sits in a downloads folder, and the customer already has their own
+key. Scheduled deletion with a seven-day grace period, executed by cascade
+rather than an enumerated table list that would go stale. Retention that never
+drops the active generation.
+
+Entitlements deliberately meter what costs — databases, rows, frequency, seats,
+AI — and never meter correctness. Selling accurate numbers as an upgrade would
+mean shipping inaccurate ones as the default.
+
+**Not delivered, and why.**
+
+*Billing integration.* Needs a Stripe account and live keys. The entitlement
+model it would attach to is finished, so this is a connector, not a redesign.
+
+*SSO/SAML.* Enterprise procurement, not MVP. No first customer at Starter or
+Growth will ask for it.
+
+*Marketing connectors (Meta, Google, TikTok).* Genuinely large — per-workspace
+OAuth, per-platform schemas, attribution joins with their own approval flow.
+It is a second product surface, and shipping the Odoo one first is the right
+order.
+
+*Industry packs beyond the general catalog.* Worth doing once real customers
+show which concepts they actually ask for. Guessing at them now is how a
+catalog gets bloated with metrics nobody opens.
 
 ---
 
