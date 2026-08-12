@@ -1,0 +1,65 @@
+# Runs the whole suite on every push and pull request.
+#
+# Until now the 361 tests only ran when someone remembered to run them, which
+# means the isolation and secret-leak tests were protecting nothing on the days
+# nobody did.
+#
+# No services block: the suite starts its own PostgreSQL through
+# embedded-postgres, so CI needs nothing but Node.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      # `npm ci` aborts whenever the lock cannot satisfy npm's ideal tree
+      # exactly, which happens when the runner's npm differs from a developer's.
+      - run: npm install --no-audit --no-fund
+
+      - run: npm run typecheck
+
+      - run: npm run lint
+
+      - run: npm test
+
+      - run: npm run build
+
+  # A separate job so a leak is reported as its own failure rather than being
+  # buried in a list of unrelated ones.
+  security:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm install --no-audit --no-fund
+
+      - name: Workspace isolation, secret leakage, SSRF, copilot boundaries
+        run: npm run test:security
+
+      - name: Fail if a credential was committed
+        run: |
+          if git grep -nIE 'SECRET_STORE_ROOT_KEY=[A-Za-z0-9+/]{20,}' -- ':!*.example' ':!docs/*'; then
+            echo "A root key looks committed."; exit 1
+          fi
+          if git grep -nIE '(sk-[A-Za-z0-9]{20,}|xoxb-|AIza[0-9A-Za-z_-]{30,})' -- ':!*.example'; then
+            echo "An API key looks committed."; exit 1
+          fi
