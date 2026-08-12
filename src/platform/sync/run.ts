@@ -181,6 +181,16 @@ export async function runSync(
     const ctx = job;
     {
       const run = await withWorkspace(context, async (client) => {
+        // Reclaim a run abandoned by a restart first: the partial unique index
+        // over ('queued','running') would otherwise make every future sync
+        // collide with a row nothing is actually working on.
+        await client.query(
+          `UPDATE sync_runs
+              SET status = 'interrupted', error = 'Abandoned by a restart; reclaimed.', finished_at = now()
+            WHERE workspace_id = $1 AND kind = 'sync' AND status IN ('queued','running')`,
+          [context.workspaceId],
+        );
+
         const { rows } = await client.query<{ id: string }>(
           `INSERT INTO sync_runs (workspace_id, connection_id, kind, status)
            VALUES ($1,$2,'sync','running') RETURNING id`,

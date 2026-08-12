@@ -65,19 +65,24 @@ async function persistCheckpoint(
 
 async function openRun(context: WorkspaceContext, connectionId: string) {
   return withWorkspace(context, async (client) => {
-    // A worker can die after opening the run but before finishing the job. The
-    // durable job is then reclaimed; reuse its run/checkpoint instead of
-    // colliding with the one-running-run uniqueness guard forever.
-    const existing = await client.query<{ id: string; checkpoint: Record<string, unknown> }>(
-      `SELECT id, checkpoint FROM sync_runs
-        WHERE workspace_id = $1 AND kind = 'discovery' AND status = 'running'
-        ORDER BY started_at DESC LIMIT 1`,
+    // Close any run left behind by a previous attempt before opening a new one.
+    //
+    // `sync_runs_one_live` is a partial unique index over ('queued','running'),
+    // so a row abandoned mid-flight — a deploy, a crash, a killed container —
+    // collides with every future attempt and the insert below fails forever.
+    // The customer sees "needs another attempt" and clicking again cannot help,
+    // because the blocker is a stale row rather than anything about their Odoo.
+    //
+    // The durable job queue is the real record of what is live; this table is
+    // bookkeeping for the UI, so reclaiming an orphan here is safe. A genuinely
+    // concurrent run is still prevented by `job_queue_one_live`.
+    await client.query(
+      `UPDATE sync_runs
+          SET status = 'interrupted', error = 'Abandoned by a restart; reclaimed.', finished_at = now()
+        WHERE workspace_id = $1 AND kind = 'discovery' AND status IN ('queued','running')`,
       [context.workspaceId],
     );
-    if (existing.rows[0]) return existing.rows[0];
 
-    // A partial unique index allows only one live run per workspace and kind,
-    // so a double-click cannot start two concurrent scans.
     const { rows } = await client.query<{ id: string; checkpoint: Record<string, unknown> }>(
       `INSERT INTO sync_runs (workspace_id, connection_id, kind, status)
        VALUES ($1, $2, 'discovery', 'running')
