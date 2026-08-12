@@ -80,7 +80,13 @@ function MappingPage() {
   const ar = lang === "ar";
   const { workspace, refresh: refreshSession } = useSession();
   const workspaceId = workspace?.id ?? null;
-  const mayApprove = can(workspace, "mapping.approve");
+  // Each control is gated on the permission the server actually enforces for
+  // it. Approving a mapping, answering a policy and publishing are all
+  // `policy.approve`; generating a proposal is `discovery.run`. Gating them
+  // together on `mapping.approve` — a permission the server has never had —
+  // showed a `data_admin` approval buttons the server would refuse.
+  const mayApprove = can(workspace, "policy.approve");
+  const mayPropose = can(workspace, "discovery.run");
 
   const [manifest, setManifest] = useState<Manifest | null>(null);
   const [mappings, setMappings] = useState<Mapping[]>([]);
@@ -88,6 +94,10 @@ function MappingPage() {
   const [concepts, setConcepts] = useState<Concept[]>([]);
   const [blockers, setBlockers] = useState<Blocker[]>([]);
   const [selected, setSelected] = useState<string | null>(null);
+  // The answer a reviewer has picked but not yet approved. A policy is only
+  // ever sent when they press approve, so nothing is decided by a stray change
+  // of a dropdown.
+  const [policyDraft, setPolicyDraft] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -151,18 +161,24 @@ function MappingPage() {
   async function decide(patch: Record<string, unknown>) {
     if (!workspaceId) return;
     setBusy(true);
+    setError(null);
     try {
       const response = await workspaceFetch(workspaceId, "/api/v1/mapping", {
         method: "PATCH",
         body: JSON.stringify(patch),
       });
-      if (response.ok) {
-        const next = mappings.find(
-          (mapping) => mapping.canonicalField !== selected && mapping.status === "needs_review",
-        );
-        if (next && "canonicalField" in patch) setSelected(next.canonicalField);
-        await load();
+      if (!response.ok) {
+        // A refused decision has to say so. Swallowing it left the reviewer
+        // pressing a button that looked like it worked and changed nothing.
+        const body = await response.json().catch(() => ({}) as { error?: string });
+        setError(String(body.error ?? (ar ? "تعذر حفظ القرار." : "Could not save the decision.")));
+        return;
       }
+      const next = mappings.find(
+        (mapping) => mapping.canonicalField !== selected && mapping.status === "needs_review",
+      );
+      if (next && "canonicalField" in patch) setSelected(next.canonicalField);
+      await load();
     } finally {
       setBusy(false);
     }
@@ -210,7 +226,7 @@ function MappingPage() {
             : "Once your structure is read, we propose what each field means and you review and approve."}
         </Notice>
         {readyForProposal ? (
-          <Button onClick={propose} disabled={busy || !mayApprove}>
+          <Button onClick={propose} disabled={busy || !mayPropose}>
             {busy ? <Loader2 className="size-4 animate-spin" /> : <Sparkles className="size-4" />}
             {busy
               ? ar
@@ -303,21 +319,43 @@ function MappingPage() {
           />
           <CardBody className="grid gap-4 sm:grid-cols-2">
             {openPolicies.map((policy) => (
-              <SelectField
-                key={policy.policyKey}
-                label={ar ? policy.question.ar : policy.question.en}
-                value={policy.value}
-                disabled={!mayApprove || busy}
-                onChange={(event) =>
-                  void decide({ policyKey: policy.policyKey, value: event.target.value })
-                }
-              >
-                {policy.options.map((option) => (
-                  <option key={option.value} value={option.value}>
-                    {ar ? option.label.ar : option.label.en}
-                  </option>
-                ))}
-              </SelectField>
+              <div key={policy.policyKey} className="space-y-2">
+                <SelectField
+                  label={ar ? policy.question.ar : policy.question.en}
+                  value={policyDraft[policy.policyKey] ?? policy.value}
+                  disabled={!mayApprove || busy}
+                  onChange={(event) =>
+                    setPolicyDraft((draft) => ({
+                      ...draft,
+                      [policy.policyKey]: event.target.value,
+                    }))
+                  }
+                >
+                  {policy.options.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {ar ? option.label.ar : option.label.en}
+                    </option>
+                  ))}
+                </SelectField>
+                {/* Approving is its own act, not a side effect of picking. A
+                    native select fires no change event when the answer already
+                    shown is the right one, so approval by dropdown alone left
+                    every policy a reviewer agreed with stuck at needs_review —
+                    and publication blocked with no way to unblock it. */}
+                <Button
+                  size="sm"
+                  disabled={!mayApprove || busy}
+                  onClick={() =>
+                    void decide({
+                      policyKey: policy.policyKey,
+                      value: policyDraft[policy.policyKey] ?? policy.value,
+                    })
+                  }
+                >
+                  <Check className="size-4" />
+                  {t("approve")}
+                </Button>
+              </div>
             ))}
           </CardBody>
         </Card>

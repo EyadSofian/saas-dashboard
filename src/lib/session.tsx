@@ -140,7 +140,9 @@ export function can(workspace: WorkspaceSummary | null, permission: string): boo
     "connection.write": ["workspace_owner", "data_admin"],
     "connection.test": ["workspace_owner", "data_admin"],
     "discovery.run": ["workspace_owner", "data_admin"],
-    "mapping.approve": ["workspace_owner", "data_admin", "financial_approver"],
+    // No `mapping.approve`: the server has never had such a permission, so a
+    // client-only entry for it did not mirror a server check — it contradicted
+    // one. Approving a mapping is enforced as `policy.approve`.
     "policy.approve": ["workspace_owner", "financial_approver"],
     "dashboard.publish": ["workspace_owner", "dashboard_publisher"],
     "sync.run": ["workspace_owner", "data_admin"],
