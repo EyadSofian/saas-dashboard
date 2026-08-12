@@ -17,7 +17,18 @@ export const odooConnectionInputSchema = z
       // smuggling attempt, not a typo.
       .regex(/^[A-Za-z0-9._-]+$/, "Database name contains unsupported characters"),
     login: z.string().min(1).max(256),
-    apiKey: z.string().min(1).max(512),
+    // Optional, because the key is write-only: a customer correcting the URL,
+    // the database name or the login has no way to retype a credential the
+    // browser was never given back. Omitting it means "keep the stored key",
+    // and the API reuses the existing ciphertext rather than re-encrypting.
+    //
+    // The wizard always sends the field, so an empty string carries that same
+    // meaning rather than being rejected as too short.
+    apiKey: z
+      .string()
+      .max(512)
+      .optional()
+      .transform((value) => value || undefined),
   })
   .strict();
 

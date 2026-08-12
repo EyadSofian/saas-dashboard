@@ -170,10 +170,22 @@ export async function getConnection(
 }
 
 export interface UpsertConnectionInput {
+  /**
+   * The id the caller bound `secret`'s AAD to, used when the row is created.
+   * The credential only decrypts under the id it was encrypted for, so the row
+   * must take this id rather than generating its own.
+   */
+  connectionId: string;
   baseUrl: string;
   database: string;
   login: string;
   secret: StoredSecret;
+  /**
+   * False when `secret` is the row's own stored ciphertext, reused unchanged by
+   * a save that only edited the URL, database or login. Decides whether the
+   * credential is treated as new — see the verdict handling below.
+   */
+  credentialReplaced: boolean;
 }
 
 /**
@@ -187,36 +199,80 @@ export async function upsertConnection(
 ): Promise<OdooConnectionPublic> {
   requirePermission(context, "connection.write");
   return withWorkspace(context, async (client) => {
-    const existing = await client.query<{ id: string }>(
-      "SELECT id FROM odoo_connections WHERE workspace_id = $1 AND deleted_at IS NULL",
+    const existing = await client.query<{ id: string; last_test_state: string | null }>(
+      "SELECT id, last_test_state FROM odoo_connections WHERE workspace_id = $1 AND deleted_at IS NULL",
       [context.workspaceId],
     );
 
     let connectionId: string;
     if (existing.rows[0]) {
       connectionId = existing.rows[0].id;
+      if (connectionId !== input.connectionId) {
+        // The credential was encrypted against a different connection id — a row
+        // created between the caller's read and this write. Storing it would
+        // leave a ciphertext that nothing can decrypt, so refuse instead.
+        throw new Error("Connection changed while it was being saved");
+      }
+
+      // Every save drops the previous verdict, including one that only corrected
+      // the URL, the database name or the login. That is deliberate rather than
+      // incidental: a verdict describes the whole tuple — host, database, login
+      // and credential — so changing any part of it leaves a verdict that
+      // describes a connection which no longer exists. "Not tested yet" is
+      // honest about that; a green tick inherited from a different URL is not.
+      //
+      // `credential_unreadable` is the one verdict that survives, because it is
+      // a statement about the stored ciphertext rather than about anything Odoo
+      // said. A save that reuses that same unreadable ciphertext has fixed
+      // nothing, so clearing it would demote a known-broken connection to a
+      // merely untested one and take the recovery instruction off the wizard.
+      // Only re-encrypting the key clears it.
+      const keepVerdict =
+        !input.credentialReplaced && existing.rows[0].last_test_state === "credential_unreadable";
+
       await client.query(
-        // The credential is re-encrypted on every save, so the previous test
-        // result describes a connection that no longer exists. Clearing it with
-        // the status keeps the row from reporting a stale verdict — including a
-        // `credential_unreadable` that the save has just fixed.
         `UPDATE odoo_connections
             SET base_url = $1, database = $2, login = $3,
-                status = 'draft', last_test_state = NULL, last_tested_at = NULL,
+                status          = CASE WHEN $4::boolean THEN status          ELSE 'draft' END,
+                last_test_state = CASE WHEN $4::boolean THEN last_test_state ELSE NULL END,
+                last_tested_at  = CASE WHEN $4::boolean THEN last_tested_at  ELSE NULL END,
                 updated_at = now()
-          WHERE id = $4 AND workspace_id = $5`,
-        [input.baseUrl, input.database, input.login, connectionId, context.workspaceId],
+          WHERE id = $5 AND workspace_id = $6`,
+        [
+          input.baseUrl,
+          input.database,
+          input.login,
+          keepVerdict,
+          connectionId,
+          context.workspaceId,
+        ],
       );
     } else {
+      // The caller's id, not a generated one: the credential's AAD is already
+      // bound to it, and a row with any other id would hold a credential that
+      // fails its GCM check on the very first connection test.
       const inserted = await client.query<{ id: string }>(
-        `INSERT INTO odoo_connections (workspace_id, base_url, database, login, status, created_by)
-         VALUES ($1, $2, $3, $4, 'draft', $5)
+        `INSERT INTO odoo_connections
+           (id, workspace_id, base_url, database, login, status, created_by)
+         VALUES ($1, $2, $3, $4, $5, 'draft', $6)
          RETURNING id`,
-        [context.workspaceId, input.baseUrl, input.database, input.login, context.userId],
+        [
+          input.connectionId,
+          context.workspaceId,
+          input.baseUrl,
+          input.database,
+          input.login,
+          context.userId,
+        ],
       );
       connectionId = inserted.rows[0].id;
     }
 
+    // Written on every save, including one that reuses the stored ciphertext:
+    // the row is then rewritten with identical bytes, which keeps the invariant
+    // that a connection and its credential are created together. Only
+    // `rotated_at` distinguishes the two, so it keeps meaning "when the key last
+    // changed" rather than "when the form was last submitted".
     await client.query(
       `INSERT INTO connection_secret_refs
          (workspace_id, connection_id, purpose, adapter_id, key_id, ciphertext, iv, auth_tag)
@@ -227,7 +283,8 @@ export async function upsertConnection(
          ciphertext = EXCLUDED.ciphertext,
          iv         = EXCLUDED.iv,
          auth_tag   = EXCLUDED.auth_tag,
-         rotated_at = now()`,
+         rotated_at = CASE WHEN $8::boolean THEN now()
+                           ELSE connection_secret_refs.rotated_at END`,
       [
         context.workspaceId,
         connectionId,
@@ -236,6 +293,7 @@ export async function upsertConnection(
         input.secret.ciphertext,
         input.secret.iv,
         input.secret.authTag,
+        input.credentialReplaced,
       ],
     );
 

@@ -127,7 +127,10 @@ themselves are the problem.
 2. `POST /api/v1/workspaces` with organization/workspace name, timezone, locale,
    base currency. The caller becomes `workspace_owner`.
 3. Open `/onboarding`, enter Odoo URL, database, login and API key.
-   The key is encrypted server-side and never returned to the browser.
+   The key is encrypted server-side and never returned to the browser — which is
+   why later saves may leave it blank: correcting a URL, database name or login
+   keeps the stored credential rather than demanding it be retyped. The previous
+   test verdict is cleared on any save, since it described the old details.
 4. Run the connection test. Read permission is probed per model; a denial
    becomes a visible permission gap rather than a failed test.
 5. Start discovery. It scans the allowlisted models plus permitted relations,
@@ -173,6 +176,10 @@ tell them apart from the UI. Recovery is the same either way: re-enter the Odoo
 API key in the wizard and save — that re-encrypts under the current key. If the
 original `SECRET_STORE_ROOT_KEY` still exists, restoring it also works and
 avoids touching every workspace.
+
+Only a save that carries a new key clears this state. Every other save keeps the
+stored ciphertext, so `last_test_state` stays `credential_unreadable` and the
+row keeps reporting the problem instead of falling back to "not tested yet".
 
 Check first whether it is one workspace or all of them: a single workspace
 points at that row, all of them point at the root key.

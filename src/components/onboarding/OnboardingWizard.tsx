@@ -184,9 +184,11 @@ export function OnboardingWizard({ workspaceId }: { workspaceId: string }) {
       }
       setConnection(body.connection);
       setState("connection_pending");
-      // The saved credential is new, so the previous verdict no longer describes
-      // it — drop it rather than leave a stale banner on screen.
-      setTest(null);
+      // The server decides whether the previous verdict survived the save — it
+      // does only for an unreadable credential this save has not replaced.
+      // Follow that rather than leaving a banner it has just dropped, or hiding
+      // one it deliberately kept.
+      if (!body.connection?.lastTestState) setTest(null);
       // The key is out of the browser's hands the moment it is stored.
       setForm((f) => ({ ...f, apiKey: "" }));
     } catch {
@@ -311,8 +313,8 @@ export function OnboardingWizard({ workspaceId }: { workspaceId: string }) {
                   : "The stored key is no longer readable. Enter it again and save to restore the connection."
                 : connection?.hasSecret
                   ? ar
-                    ? "محفوظ ومشفّر، ومش بيرجع للمتصفح. اكتبه تاني عشان تحفظ أي تعديل."
-                    : "Stored and encrypted, never returned to the browser. Re-enter it to save any change."
+                    ? "محفوظ ومشفّر. اكتب مفتاحًا جديدًا فقط لو عايز تغيّره."
+                    : "Stored and encrypted. Enter a new key only to replace it."
                   : ar
                     ? "بيتحفظ مشفّرًا ومش بيرجع للمتصفح تاني أبدًا."
                     : "Stored encrypted and never returned to the browser."
@@ -329,11 +331,17 @@ export function OnboardingWizard({ workspaceId }: { workspaceId: string }) {
           <button
             type="button"
             onClick={saveConnection}
-            // The API requires a key on every save (it re-encrypts rather than
-            // reusing the stored ciphertext), so the button must demand one too
-            // — enabling it without a key only produced a validation error.
+            // An empty key is allowed once one is stored: the API keeps the
+            // existing credential, so correcting a URL or a login costs nothing.
+            // The exception is an unreadable credential — saving without a key
+            // there would reuse the ciphertext that is precisely the problem, so
+            // the field is required until it is replaced.
             disabled={
-              busy !== null || !form.baseUrl || !form.database || !form.login || !form.apiKey
+              busy !== null ||
+              !form.baseUrl ||
+              !form.database ||
+              !form.login ||
+              (!form.apiKey && (!connection?.hasSecret || credentialUnreadable))
             }
             className="inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground disabled:opacity-50"
           >

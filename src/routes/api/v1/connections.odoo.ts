@@ -20,7 +20,9 @@ export const Route = createFileRoute("/api/v1/connections/odoo")({
       },
 
       // Stores (or replaces) the workspace's Odoo connection. The API key is
-      // encrypted before it reaches the database and is never echoed back.
+      // encrypted before it reaches the database and is never echoed back — and
+      // because of that it is optional on an existing connection: there is no
+      // way for the customer to retype what they were never shown.
       POST: async ({ request }) => {
         const { requireWorkspace, jsonResponse, errorResponse, handleRouteError } =
           await import("@/platform/api/guard");
@@ -67,47 +69,75 @@ export const Route = createFileRoute("/api/v1/connections/odoo")({
 
           requirePermission(guard.context, "connection.write");
 
-          // A connection id is needed for the AAD binding, so an existing
-          // connection is reused and a new one gets a fresh id here.
-          const { getConnection } = await import("@/platform/workspace/repository");
+          // A connection id is needed for the AAD binding before the row exists,
+          // so an existing connection is reused and a new one gets a fresh id
+          // here — which the repository then creates the row under, so the
+          // credential is bound to the id it will actually be read back with.
+          const { getConnection, loadConnectionSecret } =
+            await import("@/platform/workspace/repository");
           const existing = await getConnection(guard.context);
           const connectionId = existing?.id ?? crypto.randomUUID();
 
+          // No key supplied means "keep the one you already have", so the stored
+          // ciphertext is carried over verbatim. It is never decrypted here: a
+          // save moves bytes, and cannot be turned into a way to read the key
+          // back out (THREAT_MODEL T2).
+          const { apiKey } = parsed.data;
           let secret;
-          try {
-            secret = await getSecretStore().put(
-              {
-                workspaceId: guard.context.workspaceId,
-                connectionId,
-                purpose: "odoo_api_key",
-              },
-              parsed.data.apiKey,
-            );
-          } catch (error) {
-            if (error instanceof SecretStoreError && error.kind === "production_guard") {
-              // Fail closed: refuse to store rather than store unsafely.
-              return errorResponse(
-                "Credential storage is not available in this environment.",
-                503,
-                { reason: "secret_store_not_production_grade" },
-              );
+          if (apiKey === undefined) {
+            const stored = existing ? await loadConnectionSecret(guard.context, existing.id) : null;
+            if (!stored) {
+              // Nothing to keep — a first save, or a connection whose secret ref
+              // is gone. Either way the customer must supply the key.
+              return errorResponse("An Odoo API key is required for this connection.", 400, {
+                reason: "api_key_required",
+              });
             }
-            throw error;
+            secret = stored;
+          } else {
+            try {
+              secret = await getSecretStore().put(
+                {
+                  workspaceId: guard.context.workspaceId,
+                  connectionId,
+                  purpose: "odoo_api_key",
+                },
+                apiKey,
+              );
+            } catch (error) {
+              if (error instanceof SecretStoreError && error.kind === "production_guard") {
+                // Fail closed: refuse to store rather than store unsafely.
+                return errorResponse(
+                  "Credential storage is not available in this environment.",
+                  503,
+                  { reason: "secret_store_not_production_grade" },
+                );
+              }
+              throw error;
+            }
           }
 
           const connection = await upsertConnection(guard.context, {
+            connectionId,
             baseUrl: origin,
             database: parsed.data.database,
             login: parsed.data.login,
             secret,
+            credentialReplaced: apiKey !== undefined,
           });
 
           await writeAudit(guard.context, {
             action: existing ? AUDIT_ACTIONS.connectionUpdated : AUDIT_ACTIONS.connectionCreated,
             targetType: "odoo_connection",
             targetId: connection.id,
-            // Note what changed, never the value that changed.
-            metadata: { baseUrl: origin, database: parsed.data.database, login: parsed.data.login },
+            // Note what changed, never the value that changed — including
+            // whether the credential itself was one of the things that changed.
+            metadata: {
+              baseUrl: origin,
+              database: parsed.data.database,
+              login: parsed.data.login,
+              credentialReplaced: apiKey !== undefined,
+            },
           });
 
           const { setOnboardingState } = await import("@/platform/workspace/repository");
