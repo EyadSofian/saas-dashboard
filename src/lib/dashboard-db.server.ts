@@ -340,12 +340,15 @@ export async function markDashboardDatasetFailed(
 ): Promise<void> {
   if (!databaseConfigured()) return;
   await ensureSchema();
+  // `synced_at` is deliberately NOT updated here. It records the last
+  // *successful* publish, so a failed refresh must leave it alone — otherwise
+  // the dashboard reports stale rows as fresh. `status` and `error` carry the
+  // failure; freshness only ever moves forward on success.
   await getPool().query(
     `INSERT INTO dashboard_sync_state (dataset, status, row_count, synced_at, error)
      VALUES ($1, 'failed', 0, now(), $2)
      ON CONFLICT (dataset) DO UPDATE SET
        status = EXCLUDED.status,
-       synced_at = EXCLUDED.synced_at,
        error = EXCLUDED.error`,
     [dataset, message.slice(0, 500)],
   );

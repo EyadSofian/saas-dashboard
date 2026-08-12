@@ -19,6 +19,7 @@ import { Route as GuideRouteImport } from './routes/guide'
 import { Route as LeadsRouteImport } from './routes/leads'
 import { Route as LostRouteImport } from './routes/lost'
 import { Route as MediaBuyersRouteImport } from './routes/media-buyers'
+import { Route as OnboardingRouteImport } from './routes/onboarding'
 import { Route as ProductsRouteImport } from './routes/products'
 import { Route as SalesRouteImport } from './routes/sales'
 import { Route as TeamsRouteImport } from './routes/teams'
@@ -50,6 +51,13 @@ import { Route as ApiTelegramPreviewRouteImport } from './routes/api/telegram.pr
 import { Route as ApiTelegramSendDailyRouteImport } from './routes/api/telegram.send-daily'
 import { Route as ApiTelegramSetupRouteImport } from './routes/api/telegram.setup'
 import { Route as ApiTelegramWebhookRouteImport } from './routes/api/telegram.webhook'
+import { Route as ApiV1AuditRouteImport } from './routes/api/v1/audit'
+import { Route as ApiV1DataHealthRouteImport } from './routes/api/v1/data-health'
+import { Route as ApiV1DiscoveryRouteImport } from './routes/api/v1/discovery'
+import { Route as ApiV1SchemaSnapshotsRouteImport } from './routes/api/v1/schema-snapshots'
+import { Route as ApiV1WorkspacesRouteImport } from './routes/api/v1/workspaces'
+import { Route as ApiV1ConnectionsOdooRouteImport } from './routes/api/v1/connections.odoo'
+import { Route as ApiV1ConnectionsOdooTestConnectionRouteImport } from './routes/api/v1/connections.odoo.test-connection'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -99,6 +107,11 @@ const LostRoute = LostRouteImport.update({
 const MediaBuyersRoute = MediaBuyersRouteImport.update({
   id: '/media-buyers',
   path: '/media-buyers',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const OnboardingRoute = OnboardingRouteImport.update({
+  id: '/onboarding',
+  path: '/onboarding',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ProductsRoute = ProductsRouteImport.update({
@@ -256,6 +269,42 @@ const ApiTelegramWebhookRoute = ApiTelegramWebhookRouteImport.update({
   path: '/api/telegram/webhook',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiV1AuditRoute = ApiV1AuditRouteImport.update({
+  id: '/api/v1/audit',
+  path: '/api/v1/audit',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiV1DataHealthRoute = ApiV1DataHealthRouteImport.update({
+  id: '/api/v1/data-health',
+  path: '/api/v1/data-health',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiV1DiscoveryRoute = ApiV1DiscoveryRouteImport.update({
+  id: '/api/v1/discovery',
+  path: '/api/v1/discovery',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiV1SchemaSnapshotsRoute = ApiV1SchemaSnapshotsRouteImport.update({
+  id: '/api/v1/schema-snapshots',
+  path: '/api/v1/schema-snapshots',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiV1WorkspacesRoute = ApiV1WorkspacesRouteImport.update({
+  id: '/api/v1/workspaces',
+  path: '/api/v1/workspaces',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiV1ConnectionsOdooRoute = ApiV1ConnectionsOdooRouteImport.update({
+  id: '/api/v1/connections/odoo',
+  path: '/api/v1/connections/odoo',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiV1ConnectionsOdooTestConnectionRoute =
+  ApiV1ConnectionsOdooTestConnectionRouteImport.update({
+    id: '/test-connection',
+    path: '/test-connection',
+    getParentRoute: () => ApiV1ConnectionsOdooRoute,
+  } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -268,6 +317,7 @@ export interface FileRoutesByFullPath {
   '/leads': typeof LeadsRoute
   '/lost': typeof LostRoute
   '/media-buyers': typeof MediaBuyersRoute
+  '/onboarding': typeof OnboardingRoute
   '/products': typeof ProductsRoute
   '/sales': typeof SalesRoute
   '/teams': typeof TeamsRoute
@@ -299,6 +349,13 @@ export interface FileRoutesByFullPath {
   '/api/telegram/send-daily': typeof ApiTelegramSendDailyRoute
   '/api/telegram/setup': typeof ApiTelegramSetupRoute
   '/api/telegram/webhook': typeof ApiTelegramWebhookRoute
+  '/api/v1/audit': typeof ApiV1AuditRoute
+  '/api/v1/data-health': typeof ApiV1DataHealthRoute
+  '/api/v1/discovery': typeof ApiV1DiscoveryRoute
+  '/api/v1/schema-snapshots': typeof ApiV1SchemaSnapshotsRoute
+  '/api/v1/workspaces': typeof ApiV1WorkspacesRoute
+  '/api/v1/connections/odoo': typeof ApiV1ConnectionsOdooRouteWithChildren
+  '/api/v1/connections/odoo/test-connection': typeof ApiV1ConnectionsOdooTestConnectionRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -311,6 +368,7 @@ export interface FileRoutesByTo {
   '/leads': typeof LeadsRoute
   '/lost': typeof LostRoute
   '/media-buyers': typeof MediaBuyersRoute
+  '/onboarding': typeof OnboardingRoute
   '/products': typeof ProductsRoute
   '/sales': typeof SalesRoute
   '/teams': typeof TeamsRoute
@@ -342,6 +400,13 @@ export interface FileRoutesByTo {
   '/api/telegram/send-daily': typeof ApiTelegramSendDailyRoute
   '/api/telegram/setup': typeof ApiTelegramSetupRoute
   '/api/telegram/webhook': typeof ApiTelegramWebhookRoute
+  '/api/v1/audit': typeof ApiV1AuditRoute
+  '/api/v1/data-health': typeof ApiV1DataHealthRoute
+  '/api/v1/discovery': typeof ApiV1DiscoveryRoute
+  '/api/v1/schema-snapshots': typeof ApiV1SchemaSnapshotsRoute
+  '/api/v1/workspaces': typeof ApiV1WorkspacesRoute
+  '/api/v1/connections/odoo': typeof ApiV1ConnectionsOdooRouteWithChildren
+  '/api/v1/connections/odoo/test-connection': typeof ApiV1ConnectionsOdooTestConnectionRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -355,6 +420,7 @@ export interface FileRoutesById {
   '/leads': typeof LeadsRoute
   '/lost': typeof LostRoute
   '/media-buyers': typeof MediaBuyersRoute
+  '/onboarding': typeof OnboardingRoute
   '/products': typeof ProductsRoute
   '/sales': typeof SalesRoute
   '/teams': typeof TeamsRoute
@@ -386,6 +452,13 @@ export interface FileRoutesById {
   '/api/telegram/send-daily': typeof ApiTelegramSendDailyRoute
   '/api/telegram/setup': typeof ApiTelegramSetupRoute
   '/api/telegram/webhook': typeof ApiTelegramWebhookRoute
+  '/api/v1/audit': typeof ApiV1AuditRoute
+  '/api/v1/data-health': typeof ApiV1DataHealthRoute
+  '/api/v1/discovery': typeof ApiV1DiscoveryRoute
+  '/api/v1/schema-snapshots': typeof ApiV1SchemaSnapshotsRoute
+  '/api/v1/workspaces': typeof ApiV1WorkspacesRoute
+  '/api/v1/connections/odoo': typeof ApiV1ConnectionsOdooRouteWithChildren
+  '/api/v1/connections/odoo/test-connection': typeof ApiV1ConnectionsOdooTestConnectionRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -400,6 +473,7 @@ export interface FileRouteTypes {
     | '/leads'
     | '/lost'
     | '/media-buyers'
+    | '/onboarding'
     | '/products'
     | '/sales'
     | '/teams'
@@ -431,6 +505,13 @@ export interface FileRouteTypes {
     | '/api/telegram/send-daily'
     | '/api/telegram/setup'
     | '/api/telegram/webhook'
+    | '/api/v1/audit'
+    | '/api/v1/data-health'
+    | '/api/v1/discovery'
+    | '/api/v1/schema-snapshots'
+    | '/api/v1/workspaces'
+    | '/api/v1/connections/odoo'
+    | '/api/v1/connections/odoo/test-connection'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -443,6 +524,7 @@ export interface FileRouteTypes {
     | '/leads'
     | '/lost'
     | '/media-buyers'
+    | '/onboarding'
     | '/products'
     | '/sales'
     | '/teams'
@@ -474,6 +556,13 @@ export interface FileRouteTypes {
     | '/api/telegram/send-daily'
     | '/api/telegram/setup'
     | '/api/telegram/webhook'
+    | '/api/v1/audit'
+    | '/api/v1/data-health'
+    | '/api/v1/discovery'
+    | '/api/v1/schema-snapshots'
+    | '/api/v1/workspaces'
+    | '/api/v1/connections/odoo'
+    | '/api/v1/connections/odoo/test-connection'
   id:
     | '__root__'
     | '/'
@@ -486,6 +575,7 @@ export interface FileRouteTypes {
     | '/leads'
     | '/lost'
     | '/media-buyers'
+    | '/onboarding'
     | '/products'
     | '/sales'
     | '/teams'
@@ -517,6 +607,13 @@ export interface FileRouteTypes {
     | '/api/telegram/send-daily'
     | '/api/telegram/setup'
     | '/api/telegram/webhook'
+    | '/api/v1/audit'
+    | '/api/v1/data-health'
+    | '/api/v1/discovery'
+    | '/api/v1/schema-snapshots'
+    | '/api/v1/workspaces'
+    | '/api/v1/connections/odoo'
+    | '/api/v1/connections/odoo/test-connection'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -530,6 +627,7 @@ export interface RootRouteChildren {
   LeadsRoute: typeof LeadsRoute
   LostRoute: typeof LostRoute
   MediaBuyersRoute: typeof MediaBuyersRoute
+  OnboardingRoute: typeof OnboardingRoute
   ProductsRoute: typeof ProductsRoute
   SalesRoute: typeof SalesRoute
   TeamsRoute: typeof TeamsRoute
@@ -561,6 +659,12 @@ export interface RootRouteChildren {
   ApiTelegramSendDailyRoute: typeof ApiTelegramSendDailyRoute
   ApiTelegramSetupRoute: typeof ApiTelegramSetupRoute
   ApiTelegramWebhookRoute: typeof ApiTelegramWebhookRoute
+  ApiV1AuditRoute: typeof ApiV1AuditRoute
+  ApiV1DataHealthRoute: typeof ApiV1DataHealthRoute
+  ApiV1DiscoveryRoute: typeof ApiV1DiscoveryRoute
+  ApiV1SchemaSnapshotsRoute: typeof ApiV1SchemaSnapshotsRoute
+  ApiV1WorkspacesRoute: typeof ApiV1WorkspacesRoute
+  ApiV1ConnectionsOdooRoute: typeof ApiV1ConnectionsOdooRouteWithChildren
 }
 
 declare module '@tanstack/react-router' {
@@ -633,6 +737,13 @@ declare module '@tanstack/react-router' {
       path: '/media-buyers'
       fullPath: '/media-buyers'
       preLoaderRoute: typeof MediaBuyersRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/onboarding': {
+      id: '/onboarding'
+      path: '/onboarding'
+      fullPath: '/onboarding'
+      preLoaderRoute: typeof OnboardingRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/products': {
@@ -852,8 +963,69 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiTelegramWebhookRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/v1/audit': {
+      id: '/api/v1/audit'
+      path: '/api/v1/audit'
+      fullPath: '/api/v1/audit'
+      preLoaderRoute: typeof ApiV1AuditRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/v1/data-health': {
+      id: '/api/v1/data-health'
+      path: '/api/v1/data-health'
+      fullPath: '/api/v1/data-health'
+      preLoaderRoute: typeof ApiV1DataHealthRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/v1/discovery': {
+      id: '/api/v1/discovery'
+      path: '/api/v1/discovery'
+      fullPath: '/api/v1/discovery'
+      preLoaderRoute: typeof ApiV1DiscoveryRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/v1/schema-snapshots': {
+      id: '/api/v1/schema-snapshots'
+      path: '/api/v1/schema-snapshots'
+      fullPath: '/api/v1/schema-snapshots'
+      preLoaderRoute: typeof ApiV1SchemaSnapshotsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/v1/workspaces': {
+      id: '/api/v1/workspaces'
+      path: '/api/v1/workspaces'
+      fullPath: '/api/v1/workspaces'
+      preLoaderRoute: typeof ApiV1WorkspacesRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/v1/connections/odoo': {
+      id: '/api/v1/connections/odoo'
+      path: '/api/v1/connections/odoo'
+      fullPath: '/api/v1/connections/odoo'
+      preLoaderRoute: typeof ApiV1ConnectionsOdooRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/v1/connections/odoo/test-connection': {
+      id: '/api/v1/connections/odoo/test-connection'
+      path: '/test-connection'
+      fullPath: '/api/v1/connections/odoo/test-connection'
+      preLoaderRoute: typeof ApiV1ConnectionsOdooTestConnectionRouteImport
+      parentRoute: typeof ApiV1ConnectionsOdooRoute
+    }
   }
 }
+
+interface ApiV1ConnectionsOdooRouteChildren {
+  ApiV1ConnectionsOdooTestConnectionRoute: typeof ApiV1ConnectionsOdooTestConnectionRoute
+}
+
+const ApiV1ConnectionsOdooRouteChildren: ApiV1ConnectionsOdooRouteChildren = {
+  ApiV1ConnectionsOdooTestConnectionRoute:
+    ApiV1ConnectionsOdooTestConnectionRoute,
+}
+
+const ApiV1ConnectionsOdooRouteWithChildren =
+  ApiV1ConnectionsOdooRoute._addFileChildren(ApiV1ConnectionsOdooRouteChildren)
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
@@ -866,6 +1038,7 @@ const rootRouteChildren: RootRouteChildren = {
   LeadsRoute: LeadsRoute,
   LostRoute: LostRoute,
   MediaBuyersRoute: MediaBuyersRoute,
+  OnboardingRoute: OnboardingRoute,
   ProductsRoute: ProductsRoute,
   SalesRoute: SalesRoute,
   TeamsRoute: TeamsRoute,
@@ -897,6 +1070,12 @@ const rootRouteChildren: RootRouteChildren = {
   ApiTelegramSendDailyRoute: ApiTelegramSendDailyRoute,
   ApiTelegramSetupRoute: ApiTelegramSetupRoute,
   ApiTelegramWebhookRoute: ApiTelegramWebhookRoute,
+  ApiV1AuditRoute: ApiV1AuditRoute,
+  ApiV1DataHealthRoute: ApiV1DataHealthRoute,
+  ApiV1DiscoveryRoute: ApiV1DiscoveryRoute,
+  ApiV1SchemaSnapshotsRoute: ApiV1SchemaSnapshotsRoute,
+  ApiV1WorkspacesRoute: ApiV1WorkspacesRoute,
+  ApiV1ConnectionsOdooRoute: ApiV1ConnectionsOdooRouteWithChildren,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

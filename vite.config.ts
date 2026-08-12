@@ -18,4 +18,18 @@ export default defineConfig({
     // `.output/server/index.mjs`, started by `npm start` and listening on $PORT.
     preset: "node-server",
   },
+  vite: {
+    ssr: {
+      // Better Auth depends on zod v4 while the app is pinned to zod v3, and npm
+      // installs both (v4 nested under better-auth). Bundling better-auth makes
+      // the bundler resolve its `zod` imports to the hoisted v3 copy, where
+      // `z.email()` does not exist — it would fail at runtime, not build time.
+      // Keeping it external lets Node resolve the nested v4 copy correctly.
+      //
+      // Remove this once the app itself moves to zod v4; that migration touches
+      // existing metric and route validation and is deliberately out of scope
+      // for the Workspace Onboarding Skeleton milestone.
+      external: ["better-auth", "pg", "embedded-postgres"],
+    },
+  },
 });
