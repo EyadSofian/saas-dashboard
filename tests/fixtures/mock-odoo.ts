@@ -347,7 +347,7 @@ export function createMockOdoo(options: MockOdooOptions = {}): MockOdooServer {
       headers: { "content-type": "application/json" },
     });
 
-  const mockFetch: typeof fetch = async (input, init) => {
+  const mockFetch: typeof fetch = async (_input, init) => {
     if (options.redirect) {
       return new Response(null, { status: 302, headers: { location: "http://169.254.169.254/" } });
     }

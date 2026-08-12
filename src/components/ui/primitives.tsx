@@ -59,12 +59,7 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button
 /* ----------------------------------------------------------------- Card -- */
 
 export function Card({ className, ...props }: HTMLAttributes<HTMLDivElement>) {
-  return (
-    <div
-      className={cn("rounded-lg border border-border bg-surface", className)}
-      {...props}
-    />
-  );
+  return <div className={cn("rounded-lg border border-border bg-surface", className)} {...props} />;
 }
 
 export function CardHeader({
