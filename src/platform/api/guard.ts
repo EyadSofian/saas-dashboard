@@ -13,6 +13,7 @@ import { ForbiddenError } from "../workspace/repository";
 import { databaseConfigured } from "../db/pool";
 import type { WorkspaceContext } from "../contracts";
 import { redactSecrets, safeErrorMessage } from "../audit/redact";
+import { reportError } from "../observability/errors";
 
 export const WORKSPACE_HEADER = "x-workspace-id";
 
@@ -67,9 +68,16 @@ export async function requireWorkspace(request: Request): Promise<GuardSuccess |
 }
 
 /** Maps a thrown error to a response without leaking internals or secrets. */
-export function handleRouteError(error: unknown): Response {
+export function handleRouteError(
+  error: unknown,
+  context: { workspaceId?: string; operation?: string } = {},
+): Response {
   if (error instanceof ForbiddenError) {
+    // A permission refusal is the system working, not an incident.
     return errorResponse("You do not have permission to do this.", 403);
   }
+  // Fire-and-forget: an outage at the tracker must not turn a handled 500 into
+  // an unhandled one, or add latency to a request already going badly.
+  reportError(error, context);
   return errorResponse(safeErrorMessage(error, 200), 500);
 }
