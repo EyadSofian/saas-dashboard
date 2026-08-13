@@ -138,7 +138,15 @@ export async function startSync(context: WorkspaceContext): Promise<{ jobId: str
     throw new Error("Publish an approved mapping before syncing.");
   }
 
-  const { enqueueJob } = await import("../jobs/durable");
+  const { enqueueJob, reapAbandonedJobs } = await import("../jobs/durable");
+
+  // Clear the wreckage before asking for more work. `job_queue_one_live` refuses
+  // a second live job of a kind, so a job abandoned mid-run — its worker gone,
+  // its retries spent — blocks every future refresh for that workspace. Since
+  // the button that would fix it is also the button this call is behind, a
+  // customer with a dead job had no way out of it at all.
+  await reapAbandonedJobs();
+
   const { id } = await enqueueJob({ workspaceId: context.workspaceId, kind: "sync" });
   const { nudgeWorker } = await import("../jobs/handlers");
   nudgeWorker();

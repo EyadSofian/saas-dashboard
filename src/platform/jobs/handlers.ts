@@ -52,6 +52,26 @@ export function startWorker(): JobWorker {
 }
 
 /**
+ * Starts the worker if it is not already running, and says so once.
+ *
+ * Idempotent and cheap, so it is safe to call from a request path. That is the
+ * point: the SSR entry's module side effect is not a guarantee — whether it
+ * runs depends on how the bundle is built and invoked — and a queue that never
+ * starts is indistinguishable from an idle one. Calling this from the API guard
+ * means the first authenticated request brings the worker up wherever the
+ * entry did not.
+ *
+ * The log line is deliberate. A background worker that announces nothing can be
+ * absent for hours without anyone being able to tell.
+ */
+export function ensureWorker(reason: string): JobWorker {
+  const existing = worker;
+  const active = startWorker();
+  if (!existing) console.log(`[worker] started (${reason})`);
+  return active;
+}
+
+/**
  * Best-effort nudge used after an interactive enqueue.
  *
  * The normal five-second worker loop remains the source of truth. This simply

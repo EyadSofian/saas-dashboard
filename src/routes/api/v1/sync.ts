@@ -28,7 +28,12 @@ export const Route = createFileRoute("/api/v1/sync")({
               [guard.context.workspaceId],
             );
             const jobsResult = await client.query(
-              `SELECT id, status, error, attempts, max_attempts, created_at, started_at, finished_at
+              // `stalled` is the difference between "a refresh is running" and
+              // "a refresh is claimed by a worker that is no longer there". Both
+              // read as status='running', and reporting the second as progress
+              // is what left a customer watching a refresh for eleven hours.
+              `SELECT id, status, error, attempts, max_attempts, created_at, started_at, finished_at,
+                      (status = 'running' AND (leased_until IS NULL OR leased_until < now())) AS stalled
                  FROM job_queue
                 WHERE workspace_id = $1 AND kind = 'sync'
                 ORDER BY created_at DESC LIMIT 5`,

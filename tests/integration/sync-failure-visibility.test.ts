@@ -10,7 +10,8 @@ import { Pool } from "pg";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { startTestDatabase, type TestDatabase } from "../fixtures/postgres";
-import { runSync } from "@/platform/sync/run";
+import { runSync, startSync } from "@/platform/sync/run";
+import { claimJob, enqueueJob } from "@/platform/jobs/durable";
 import { listHealth } from "@/platform/health";
 import { closePool } from "@/platform/db/pool";
 import type { WorkspaceContext } from "@/platform/contracts";
@@ -18,6 +19,8 @@ import type { WorkspaceContext } from "@/platform/contracts";
 const ORG = "00000000-0000-4000-8000-00000000000c";
 const WS = "00000000-0000-4000-8000-00000000001c";
 const USER = "00000000-0000-4000-8000-0000000000c1";
+const CONNECTION = "00000000-0000-4000-8000-0000000000c2";
+const SNAPSHOT = "00000000-0000-4000-8000-0000000000c3";
 
 const context: WorkspaceContext = {
   workspaceId: WS,
@@ -71,7 +74,26 @@ beforeAll(async () => {
     "INSERT INTO memberships (user_id,organization_id,workspace_id,roles) VALUES ($1,$2,$3,ARRAY['workspace_owner'])",
     [USER, ORG, WS],
   );
+  await pool.query(
+    `INSERT INTO odoo_connections (id,workspace_id,base_url,database,login,status)
+     VALUES ($1,$2,'https://gamma.odoo.test','gamma','c@c.test','connected')`,
+    [CONNECTION, WS],
+  );
+  await pool.query(
+    `INSERT INTO schema_snapshots (id,workspace_id,connection_id,content_hash,status)
+     VALUES ($1,$2,$3,repeat('c',64),'ready')`,
+    [SNAPSHOT, WS, CONNECTION],
+  );
 }, 120_000);
+
+/** A published manifest, which is all `startSync` checks before enqueueing. */
+async function publishManifest() {
+  await pool.query(
+    `INSERT INTO semantic_manifests (workspace_id, snapshot_id, version, status)
+     VALUES ($1,$2,1,'published')`,
+    [WS, SNAPSHOT],
+  );
+}
 
 afterAll(async () => {
   await closePool().catch(() => undefined);
@@ -82,6 +104,29 @@ afterAll(async () => {
 beforeEach(async () => {
   await pool.query("DELETE FROM data_health_states");
   await pool.query("DELETE FROM semantic_manifests");
+  await pool.query("DELETE FROM job_queue");
+});
+
+describe("recovering from an abandoned refresh", () => {
+  it("clears the dead job so the next refresh can be queued at all", async () => {
+    await publishManifest();
+
+    // A refresh claimed by a worker that then died, with its retries spent —
+    // the state a deploy mid-sync leaves behind.
+    const dead = await enqueueJob({ workspaceId: WS, kind: "sync", maxAttempts: 1 });
+    await claimJob("worker-that-died", ["sync"]);
+    await pool.query("UPDATE job_queue SET leased_until = now() - interval '1 hour'");
+
+    const { jobId } = await startSync(context);
+
+    const { rows } = await pool.query("SELECT id, status FROM job_queue ORDER BY created_at", []);
+    const previous = rows.find((row) => row.id === dead.id);
+    // The corpse is closed out, and the refresh the customer asked for is a
+    // genuinely new job rather than a handle on the dead one.
+    expect(previous?.status).toBe("failed");
+    expect(jobId).not.toBe(dead.id);
+    expect(rows.find((row) => row.id === jobId)?.status).toBe("queued");
+  });
 });
 
 describe("a refused sync", () => {

@@ -207,6 +207,40 @@ describe("lease expiry — surviving a dead worker", () => {
     expect(rows[0].finished_at).not.toBeNull();
   });
 
+  // Comparing a null lease to now() yields null, not true, so a running row
+  // whose lease went missing is invisible to every comparison and would never
+  // be reclaimed or reaped again.
+  it("treats a job whose lease vanished as abandoned rather than immortal", async () => {
+    const job = await enqueueJob({ workspaceId: WS, kind: "sync", maxAttempts: 1 });
+    await claimJob("worker-a", ["sync"]);
+    await pool.query("UPDATE job_queue SET leased_until = NULL WHERE id = $1", [job.id]);
+
+    expect(await stalledJobs()).toBe(1);
+    expect(await reapAbandonedJobs()).toBe(1);
+
+    const { rows } = await pool.query("SELECT status FROM job_queue WHERE id=$1", [job.id]);
+    expect(rows[0].status).toBe("failed");
+  });
+
+  // The trap this closes: `job_queue_one_live` refuses a second live job of a
+  // kind, so an abandoned one blocks every future refresh — and the control
+  // that would clear it is the very refresh being blocked.
+  it("lets a new job be enqueued once the abandoned one is reaped", async () => {
+    await enqueueJob({ workspaceId: WS, kind: "sync", maxAttempts: 1 });
+    await claimJob("worker-a", ["sync"]);
+    await pool.query("UPDATE job_queue SET leased_until = now() - interval '1 minute'");
+
+    // While the corpse is still `running`, the workspace is locked out.
+    const blocked = await enqueueJob({ workspaceId: WS, kind: "sync" });
+    expect(blocked.created).toBe(false);
+
+    await reapAbandonedJobs();
+
+    const fresh = await enqueueJob({ workspaceId: WS, kind: "sync" });
+    expect(fresh.created).toBe(true);
+    expect(await claimJob("worker-b", ["sync"])).not.toBeNull();
+  });
+
   it("leaves a job alone while it still holds its lease or has attempts left", async () => {
     // Live lease, budget spent.
     await enqueueJob({ workspaceId: WS, kind: "sync", maxAttempts: 1 });

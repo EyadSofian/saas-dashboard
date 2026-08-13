@@ -126,7 +126,7 @@ export async function claimJob(workerId: string, kinds: string[]): Promise<Durab
               status = 'queued'
               -- A running job whose lease expired: its worker died, so it is
               -- claimable again and resumes from its checkpoint.
-              OR (status = 'running' AND leased_until < now())
+              OR (status = 'running' AND (leased_until IS NULL OR leased_until < now()))
             )
           ORDER BY run_after, created_at
           FOR UPDATE SKIP LOCKED
@@ -335,7 +335,8 @@ export class JobWorker {
 export async function stalledJobs(): Promise<number> {
   return withAdmin(async (client) => {
     const { rows } = await client.query<{ count: string }>(
-      "SELECT count(*)::text AS count FROM job_queue WHERE status='running' AND leased_until < now()",
+      `SELECT count(*)::text AS count FROM job_queue
+        WHERE status = 'running' AND (leased_until IS NULL OR leased_until < now())`,
     );
     return Number(rows[0].count);
   });
@@ -360,7 +361,11 @@ export async function reapAbandonedJobs(): Promise<number> {
               leased_by = NULL,
               leased_until = NULL
         WHERE status = 'running'
-          AND leased_until < now()
+          -- A null lease counts as lapsed. Comparing null to now() yields null
+          -- rather than false, so a running row that lost its lease entirely
+          -- would be skipped by every comparison and sit there forever, which
+          -- is the exact shape of the bug this function exists to end.
+          AND (leased_until IS NULL OR leased_until < now())
           AND attempts >= max_attempts`,
     );
     return rowCount ?? 0;

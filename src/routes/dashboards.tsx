@@ -87,6 +87,8 @@ function DashboardsPage() {
   // it and drop the one field that says what went wrong.
   const [syncError, setSyncError] = useState<string | null>(null);
   const [syncStatus, setSyncStatus] = useState<string | null>(null);
+  // The newest job says `running` but no worker holds its lease.
+  const [syncStalled, setSyncStalled] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const template = useMemo(
@@ -151,6 +153,10 @@ function DashboardsPage() {
         setSyncFailed(failed);
         setSyncError(failed ? (body.latestJob?.error ?? body.latestRun?.error ?? null) : null);
         setSyncStatus(body.latestJob?.status ?? body.latestRun?.status ?? null);
+        // A job whose lease lapsed is not progress. Treating it as progress is
+        // what disabled the refresh button — the one control that recovers from
+        // it — and left the page insisting a refresh was under way.
+        setSyncStalled(Boolean(body.latestJob?.stalled));
       }
     } catch {
       setError(ar ? "تعذر الاتصال بالخادم." : "Could not reach the server.");
@@ -180,11 +186,15 @@ function DashboardsPage() {
     }
   }
 
+  // In flight for the purposes of the button and the poll: queued or running,
+  // and only while something is actually holding the job.
+  const syncInFlight = (syncStatus === "queued" || syncStatus === "running") && !syncStalled;
+
   useEffect(() => {
-    if (syncStatus !== "queued" && syncStatus !== "running") return;
+    if (!syncInFlight) return;
     const timer = setInterval(() => void load(), 3_000);
     return () => clearInterval(timer);
-  }, [syncStatus, load]);
+  }, [syncInFlight, load]);
 
   async function saveDraft(publish: boolean) {
     if (!workspaceId || !template) return;
@@ -270,24 +280,28 @@ function DashboardsPage() {
                 size="sm"
                 variant="secondary"
                 onClick={runSync}
-                disabled={syncing || syncStatus === "queued" || syncStatus === "running"}
+                disabled={syncing || syncInFlight}
               >
-                {syncing || syncStatus === "queued" || syncStatus === "running" ? (
+                {syncing || syncInFlight ? (
                   <Loader2 className="size-4 animate-spin" />
                 ) : (
                   <RefreshCw className="size-4" />
                 )}
-                {syncStatus === "queued"
+                {syncStalled
                   ? ar
-                    ? "في انتظار التحديث"
-                    : "Refresh queued"
-                  : syncStatus === "running"
+                    ? "أعد المحاولة"
+                    : "Try again"
+                  : syncStatus === "queued"
                     ? ar
-                      ? "جاري التحديث"
-                      : "Refreshing"
-                    : ar
-                      ? "تحديث البيانات"
-                      : "Refresh data"}
+                      ? "في انتظار التحديث"
+                      : "Refresh queued"
+                    : syncStatus === "running"
+                      ? ar
+                        ? "جاري التحديث"
+                        : "Refreshing"
+                      : ar
+                        ? "تحديث البيانات"
+                        : "Refresh data"}
               </Button>
             )}
           </>
@@ -296,7 +310,18 @@ function DashboardsPage() {
 
       {error && <Notice tone="danger">{error}</Notice>}
 
-      {(syncStatus === "queued" || syncStatus === "running") && (
+      {syncStalled && (
+        <Notice
+          tone="warning"
+          title={ar ? "التحديث وقف من غير ما يخلّص" : "The refresh stopped without finishing"}
+        >
+          {ar
+            ? "آخر تحديث اتسجّل باسم عامل مابقاش شغال — غالبًا وقع أثناء إعادة تشغيل أو نشر. اضغط «أعد المحاولة» عشان تبدأ واحد جديد."
+            : "The last refresh was claimed by a worker that is no longer running — usually a restart or a deploy caught it mid-run. Press Try again to start a fresh one."}
+        </Notice>
+      )}
+
+      {syncInFlight && (
         <Notice
           tone="brand"
           icon={<Loader2 className="size-4 animate-spin" />}

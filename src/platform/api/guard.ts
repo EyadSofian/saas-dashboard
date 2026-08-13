@@ -47,6 +47,16 @@ export async function requireWorkspace(request: Request): Promise<GuardSuccess |
     return { ok: false, response: errorResponse("The platform database is not configured.", 503) };
   }
 
+  // The queue only advances while a worker is polling, and the SSR entry that
+  // is supposed to start one runs as a module side effect — which is not a
+  // guarantee that it runs at all. Ensuring it here costs a null check per
+  // request and removes the failure mode where every refresh a customer asks
+  // for is accepted, queued, and never picked up by anything.
+  if (process.env.DISABLE_JOB_WORKER !== "1") {
+    const { ensureWorker } = await import("../jobs/handlers");
+    ensureWorker("api-request");
+  }
+
   const user = await getSessionUser(request);
   if (!user) return { ok: false, response: errorResponse("Authentication required.", 401) };
 
