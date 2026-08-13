@@ -107,8 +107,25 @@ export async function extractModel(
     total += page.length;
 
     const last = page[page.length - 1];
-    lastWriteDate = String(last.write_date ?? upperBound);
-    lastId = Number(last.id ?? 0);
+    // Odoo returns `false`, not null, for an unset datetime, and `??` does not
+    // catch it — so this has to test the value rather than lean on coalescing.
+    const write = last.write_date;
+    const nextWriteDate = typeof write === "string" && write ? write : upperBound;
+    const nextId = Number(last.id ?? 0);
+
+    // The keyset must move, or the next query asks the identical question and
+    // gets the identical full page, forever. That loop cannot be seen from
+    // outside: it reads pages, so it keeps its lease alive and reports itself
+    // as a healthy running sync for as long as anyone is willing to wait.
+    // Failing here turns an invisible eternity into a visible error.
+    if (nextWriteDate === lastWriteDate && nextId === lastId) {
+      throw new Error(
+        `Reading ${plan.odooModel} stopped making progress at id ${nextId}; the same page kept coming back.`,
+      );
+    }
+
+    lastWriteDate = nextWriteDate;
+    lastId = nextId;
 
     if (page.length < PAGE_SIZE) break;
   }
@@ -249,9 +266,23 @@ export async function runSync(
             timeoutMs: 60_000,
           },
           async (connector) => {
-            for (const plan of plans) {
+            for (const [index, plan] of plans.entries()) {
               if (ctx.signal.aborted) break;
               let written = 0;
+              let pages = 0;
+
+              // Progress is published before the entity starts, so an entity
+              // that takes an hour is still visibly the thing being worked on.
+              // Reporting only on completion is why a two-hour sync was
+              // indistinguishable from a dead one.
+              await ctx.checkpoint({
+                completedEntities: stats.map((s) => s.entity),
+                currentEntity: plan.entity,
+                entityIndex: index,
+                totalEntities: plans.length,
+                pages: 0,
+                rows: 0,
+              });
 
               const read = await extractModel(
                 connector,
@@ -260,17 +291,36 @@ export async function runSync(
                 async (page) => {
                   const rows = page.map((record) => toCanonicalRow(plan, record));
                   written += await upsertRows(context, generation, plan.target, rows);
+                  pages += 1;
                   // Per page, not per entity: a lease is measured in minutes and
                   // one entity can take far longer than that. A sync that does
                   // not say it is alive gets its job reclaimed underneath it,
                   // and the customer sees a refresh that restarts forever.
                   await ctx.heartbeat();
+                  await ctx.checkpoint({
+                    completedEntities: stats.map((s) => s.entity),
+                    currentEntity: plan.entity,
+                    entityIndex: index,
+                    totalEntities: plans.length,
+                    pages,
+                    rows: written,
+                  });
                 },
                 ctx.signal,
               );
 
               stats.push({ entity: plan.entity, read, written });
-              await ctx.checkpoint({ completedEntities: stats.map((s) => s.entity) });
+              console.log(
+                `[sync] ${plan.entity} (${plan.odooModel}) done: ${read} read, ${written} written in ${pages} page(s)`,
+              );
+              await ctx.checkpoint({
+                completedEntities: stats.map((s) => s.entity),
+                currentEntity: null,
+                entityIndex: index + 1,
+                totalEntities: plans.length,
+                pages,
+                rows: written,
+              });
               await ctx.heartbeat();
             }
           },

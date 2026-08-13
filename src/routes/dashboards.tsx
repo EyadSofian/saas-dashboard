@@ -1,7 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { BarChart3, Info, Loader2, PencilLine, RefreshCw, Undo2 } from "lucide-react";
-import { DASH, formatCurrency, formatNumber, useI18n } from "@/lib/i18n";
+import { DASH, formatCurrency, formatNumber, Ltr, useI18n } from "@/lib/i18n";
 import { can, useSession, workspaceFetch } from "@/lib/session";
 import {
   Badge,
@@ -34,6 +34,15 @@ interface MetricValue {
   metricVersion: number;
   generationId: string | null;
   formula: { ar: string; en: string };
+}
+
+/** How far the running extract has got, read from the job's checkpoint. */
+interface SyncProgress {
+  currentEntity: string | null;
+  entityIndex: number;
+  totalEntities: number;
+  pages: number;
+  rows: number;
 }
 
 /** Presets convert to a half-open range before they reach the server. */
@@ -89,6 +98,7 @@ function DashboardsPage() {
   const [syncStatus, setSyncStatus] = useState<string | null>(null);
   // The newest job says `running` but no worker holds its lease.
   const [syncStalled, setSyncStalled] = useState(false);
+  const [syncProgress, setSyncProgress] = useState<SyncProgress | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const template = useMemo(
@@ -157,6 +167,19 @@ function DashboardsPage() {
         // what disabled the refresh button — the one control that recovers from
         // it — and left the page insisting a refresh was under way.
         setSyncStalled(Boolean(body.latestJob?.stalled));
+
+        const cp = body.latestJob?.checkpoint;
+        setSyncProgress(
+          cp && typeof cp.totalEntities === "number"
+            ? {
+                currentEntity: typeof cp.currentEntity === "string" ? cp.currentEntity : null,
+                entityIndex: Number(cp.entityIndex ?? 0),
+                totalEntities: Number(cp.totalEntities),
+                pages: Number(cp.pages ?? 0),
+                rows: Number(cp.rows ?? 0),
+              }
+            : null,
+        );
       }
     } catch {
       setError(ar ? "تعذر الاتصال بالخادم." : "Could not reach the server.");
@@ -325,8 +348,33 @@ function DashboardsPage() {
         <Notice
           tone="brand"
           icon={<Loader2 className="size-4 animate-spin" />}
-          title={ar ? "التحديث شغال في الخلفية" : "The refresh is running in the background"}
+          title={
+            syncProgress
+              ? ar
+                ? `جاري التحديث — ${syncProgress.entityIndex} من ${syncProgress.totalEntities}`
+                : `Refreshing — ${syncProgress.entityIndex} of ${syncProgress.totalEntities}`
+              : ar
+                ? "التحديث شغال في الخلفية"
+                : "The refresh is running in the background"
+          }
         >
+          {/* What it is on and how far it has got. Without this the only honest
+              thing a reader could conclude from a long refresh was nothing at
+              all — a sync doing real work and a sync doing none looked the
+              same for as long as anyone cared to watch. */}
+          {syncProgress?.currentEntity && (
+            <p className="mb-1">
+              {ar ? "بيقرا دلوقتي:" : "Reading now:"} <Ltr>{syncProgress.currentEntity}</Ltr>
+              {syncProgress.pages > 0 && (
+                <>
+                  {" · "}
+                  {ar
+                    ? `${syncProgress.pages} صفحة · ${syncProgress.rows.toLocaleString()} صف`
+                    : `${syncProgress.pages} page(s) · ${syncProgress.rows.toLocaleString()} rows`}
+                </>
+              )}
+            </p>
+          )}
           {ar
             ? "تقدر تسيب الصفحة؛ آخر بيانات ناجحة هتفضل ظاهرة لحد ما التحديث الجديد يكتمل."
             : "You can leave this page; the last successful data remains visible until the new refresh completes."}

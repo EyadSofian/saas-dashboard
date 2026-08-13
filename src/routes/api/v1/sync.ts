@@ -32,7 +32,12 @@ export const Route = createFileRoute("/api/v1/sync")({
               // "a refresh is claimed by a worker that is no longer there". Both
               // read as status='running', and reporting the second as progress
               // is what left a customer watching a refresh for eleven hours.
+              // `checkpoint` carries how far the extract has actually got. The
+              // worker has always written it and nothing has ever read it back,
+              // so a refresh could run for hours while the only thing the
+              // product could say about itself was "running".
               `SELECT id, status, error, attempts, max_attempts, created_at, started_at, finished_at,
+                      checkpoint,
                       (status = 'running' AND (leased_until IS NULL OR leased_until < now())) AS stalled
                  FROM job_queue
                 WHERE workspace_id = $1 AND kind = 'sync'
