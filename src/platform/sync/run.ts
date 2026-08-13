@@ -65,9 +65,20 @@ async function credentialsFor(context: WorkspaceContext): Promise<{
 /**
  * Reads one model in deterministic keyset order.
  *
- * Ordering by (write_date, id) and carrying the last seen pair forward means a
- * row inserted mid-scan cannot shift a later page and cause a silent skip —
- * which is exactly what OFFSET pagination does under concurrent writes.
+ * The cursor is `id`, not `(write_date, id)`. Ordering by write_date looks like
+ * the better key — it is what an incremental sync cares about — but Odoo
+ * serialises a datetime to the second while storing microseconds. Feeding the
+ * truncated value back as `write_date > '…:45'` re-matches the very row it came
+ * from, whose true value is `…:45.678901`, so the same page returns forever.
+ * That is not hypothetical: it stalled a real sync on crm.lead for hours, and
+ * because a loop still reads pages, it kept its lease alive and reported itself
+ * healthy throughout.
+ *
+ * An id cursor cannot have that problem: ids are unique, immutable and exact. A
+ * row inserted mid-scan gets a higher id and is picked up later rather than
+ * shifting a page — and `write_date <= upperBound` still freezes the horizon,
+ * so it is excluded anyway. This keeps the property OFFSET pagination lacks
+ * (no silent skips under concurrent writes) without the truncation trap.
  */
 export async function extractModel(
   connector: {
@@ -78,7 +89,6 @@ export async function extractModel(
   onPage: (rows: Array<Record<string, unknown>>) => Promise<void>,
   signal?: AbortSignal,
 ): Promise<number> {
-  let lastWriteDate: string | null = null;
   let lastId = 0;
   let total = 0;
 
@@ -86,45 +96,33 @@ export async function extractModel(
     if (signal?.aborted) break;
 
     const domain: unknown[] = [...plan.domain, ["write_date", "<=", upperBound]];
-    if (lastWriteDate) {
-      // Strictly after the last row, ordered by the same composite key.
-      domain.push("|");
-      domain.push(["write_date", ">", lastWriteDate]);
-      domain.push("&");
-      domain.push(["write_date", "=", lastWriteDate]);
-      domain.push(["id", ">", lastId]);
-    }
+    // Strictly after the last row read, in the same ascending id order.
+    if (lastId > 0) domain.push(["id", ">", lastId]);
 
     const page = await connector.call<Array<Record<string, unknown>>>(
       plan.odooModel,
       "search_read",
       [domain, plan.fields],
-      { limit: PAGE_SIZE, order: "write_date asc, id asc" },
+      { limit: PAGE_SIZE, order: "id asc" },
     );
 
     if (!page.length) break;
     await onPage(page);
     total += page.length;
 
-    const last = page[page.length - 1];
-    // Odoo returns `false`, not null, for an unset datetime, and `??` does not
-    // catch it — so this has to test the value rather than lean on coalescing.
-    const write = last.write_date;
-    const nextWriteDate = typeof write === "string" && write ? write : upperBound;
-    const nextId = Number(last.id ?? 0);
+    const nextId = Number(page[page.length - 1].id ?? 0);
 
-    // The keyset must move, or the next query asks the identical question and
-    // gets the identical full page, forever. That loop cannot be seen from
-    // outside: it reads pages, so it keeps its lease alive and reports itself
-    // as a healthy running sync for as long as anyone is willing to wait.
-    // Failing here turns an invisible eternity into a visible error.
-    if (nextWriteDate === lastWriteDate && nextId === lastId) {
+    // The cursor must move. With an id cursor it always should, so reaching
+    // this means an assumption broke — the order was ignored, or the model
+    // does not key on id the way the read assumes. Either way the alternative
+    // is an unbounded loop that looks exactly like healthy work from outside,
+    // so it fails with somewhere to start looking instead.
+    if (nextId <= lastId) {
       throw new Error(
-        `Reading ${plan.odooModel} stopped making progress at id ${nextId}; the same page kept coming back.`,
+        `Reading ${plan.odooModel} stopped making progress at id ${lastId}; the same page kept coming back.`,
       );
     }
 
-    lastWriteDate = nextWriteDate;
     lastId = nextId;
 
     if (page.length < PAGE_SIZE) break;
